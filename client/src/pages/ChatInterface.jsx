@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Send, Bot, User, AlertCircle, Sparkles, Clock, MessageSquare, ChevronRight, Activity } from 'lucide-react';
 
 const ChatInterface = () => {
 	const [messages, setMessages] = useState([
@@ -65,145 +66,135 @@ const ChatInterface = () => {
 		"I need help",
 	];
 
-	return (
-		<div className="space-y-6">
-			<div className="flex justify-between items-center">
-				<div>
-					<h1 className="text-3xl font-bold text-gray-900">
-						AI Health Assistant
-					</h1>
-					<p className="text-sm text-gray-600 mt-1">
-						Smart questionnaire for comprehensive health assessment
-					</p>
-				</div>
-				<button className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
-					🚨 Emergency Help
-				</button>
-			</div>
+  return (
+    <div className="h-[calc(100vh-2rem)] max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 animate-fadeIn font-sans">
+      {/* Floating Container */}
+      <div className="h-full bg-white/90 backdrop-blur-2xl rounded-[2rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05)] border border-slate-200 flex flex-col overflow-hidden relative ring-1 ring-slate-900/5">
+        
+        {/* Header */}
+        <div className="px-8 py-6 border-b border-slate-100 bg-white/80 backdrop-blur-md flex justify-between items-center z-10 sticky top-0">
+          <div className="flex items-center space-x-6">
+            <div className="relative group">
+              <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-300">
+                <Bot className="w-8 h-8 text-white" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-[3px] border-white drop-shadow-sm tooltip" title="Online"></div>
+            </div>
+            <div>
+              <h1 className="text-2xl font-serif font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                AI Health Assistant
+                <Sparkles className="w-4 h-4 text-amber-400" />
+              </h1>
+              <div className="flex items-center space-x-2 mt-1">
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <p className="text-sm text-slate-500 font-medium font-sans">
+                  {isTyping ? "Processing..." : "Active • HIPAA Compliant"}
+                </p>
+              </div>
+            </div>
+          </div>
+          <button className="bg-white text-rose-600 px-6 py-3 rounded-xl hover:bg-rose-50 transition-colors font-semibold flex items-center space-x-2 border border-rose-100 shadow-sm hover:shadow-md hover:border-rose-200 group">
+            <AlertCircle className="w-5 h-5 group-hover:animate-pulse" />
+            <span className="text-sm tracking-wide uppercase">Emergency</span>
+          </button>
+        </div>
 
-			<div
-				className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col"
-				style={{ height: "calc(100vh - 200px)" }}
-			>
-				{/* Chat Header */}
-				<div className="p-4 border-b border-gray-100 bg-blue-50 rounded-t-xl">
-					<div className="flex items-center space-x-3">
-						<div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-							<span className="text-white text-lg">🤖</span>
-						</div>
-						<div>
-							<h3 className="font-semibold text-gray-900">
-								AI Health Assistant
-							</h3>
-							<p className="text-sm text-gray-600">
-								{isTyping ? "Typing..." : "Online • Ready to help"}
-							</p>
-						</div>
-					</div>
-				</div>
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50/50 scroll-smooth">
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex group ${message.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[80%] lg:max-w-[65%] p-6 rounded-[1.5rem] shadow-sm transition-all duration-300 ${
+                  message.role === "user"
+                    ? "bg-slate-900 text-white rounded-br-sm shadow-xl shadow-slate-900/10 hover:shadow-slate-900/20"
+                    : "bg-white text-slate-700 rounded-bl-sm border border-slate-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)] hover:shadow-md"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-2 opacity-50 text-xs font-medium tracking-wider uppercase">
+                    {message.role === 'user' ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
+                    <span>{message.role === 'user' ? 'You' : 'Assistant'}</span>
+                </div>
+                <p className="text-[1.05rem] leading-relaxed font-light tracking-wide">{message.content}</p>
+                <div className={`flex items-center justify-end gap-1 mt-3 opacity-60 ${message.role === 'user' ? 'text-slate-400' : 'text-slate-400'}`}>
+                    <Clock className="w-3 h-3" />
+                    <p className="text-xs font-medium tracking-wider uppercase">
+                    {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                </div>
+              </div>
+            </div>
+          ))}
 
-				{/* Messages */}
-				<div className="flex-1 overflow-y-auto p-4 space-y-4">
-					{messages.map((message) => (
-						<div
-							key={message.id}
-							className={`flex ${
-								message.role === "user" ? "justify-end" : "justify-start"
-							}`}
-						>
-							<div
-								className={`max-w-xs lg:max-w-md px-4 py-3 rounded-lg ${
-									message.role === "user"
-										? "bg-blue-600 text-white rounded-br-sm"
-										: "bg-gray-100 text-gray-900 rounded-bl-sm"
-								}`}
-							>
-								<p className="text-sm">{message.content}</p>
-								<p className="text-xs mt-1 opacity-75">
-									{message.timestamp.toLocaleTimeString([], {
-										hour: "2-digit",
-										minute: "2-digit",
-									})}
-								</p>
-							</div>
-						</div>
-					))}
+          {/* Typing indicator */}
+          {isTyping && (
+            <div className="flex justify-start animate-fadeIn">
+              <div className="bg-white rounded-[1.5rem] rounded-bl-sm px-6 py-5 border border-slate-100 shadow-sm flex items-center gap-3">
+                <Bot className="w-5 h-5 text-indigo-500 animate-pulse" />
+                <div className="flex space-x-1.5">
+                  {[0, 150, 300].map((delay, i) => (
+                    <div 
+                      key={i}
+                      className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"
+                      style={{ animationDelay: `${delay}ms` }}
+                    ></div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
 
-					{/* Typing indicator */}
-					{isTyping && (
-						<div className="flex justify-start">
-							<div className="bg-gray-100 rounded-lg px-4 py-3 rounded-bl-sm">
-								<div className="flex space-x-1">
-									<div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-									<div
-										className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-										style={{ animationDelay: "0.1s" }}
-									></div>
-									<div
-										className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-										style={{ animationDelay: "0.2s" }}
-									></div>
-								</div>
-							</div>
-						</div>
-					)}
+        {/* Input Area */}
+        <div className="p-6 bg-white border-t border-slate-100">
+          {/* Quick Responses */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {quickResponses.map((response, index) => (
+              <button
+                key={index}
+                onClick={() => setInput(response)}
+                className="px-4 py-2 text-sm font-medium bg-slate-50 text-slate-600 rounded-full hover:bg-white hover:text-indigo-600 hover:shadow-md hover:ring-1 hover:ring-indigo-100 border border-slate-200 transition-all duration-300 transform hover:-translate-y-0.5 flex items-center gap-2"
+              >
+                <span>{response}</span>
+                <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            ))}
+          </div>
 
-					<div ref={messagesEndRef} />
-				</div>
-
-				{/* Quick Responses */}
-				<div className="px-4 py-2 border-t border-gray-100">
-					<div className="flex flex-wrap gap-2">
-						{quickResponses.map((response, index) => (
-							<button
-								key={index}
-								onClick={() => setInput(response)}
-								className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-full hover:bg-blue-100 hover:text-blue-700 transition-colors"
-							>
-								{response}
-							</button>
-						))}
-					</div>
-				</div>
-
-				{/* Input */}
-				<div className="p-4 border-t border-gray-100">
-					<div className="flex space-x-3">
-						<button className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100">
-							<svg
-								className="w-5 h-5"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									strokeWidth={2}
-									d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-								/>
-							</svg>
-						</button>
-						<input
-							type="text"
-							value={input}
-							onChange={(e) => setInput(e.target.value)}
-							onKeyPress={(e) => e.key === "Enter" && sendMessage()}
-							placeholder="Type your message here..."
-							className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-						/>
-						<button
-							onClick={sendMessage}
-							disabled={!input.trim()}
-							className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-						>
-							Send
-						</button>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
+          <div className="relative group">
+            <div className="absolute inset-0 bg-indigo-500/5 rounded-2xl blur-xl group-hover:bg-indigo-500/10 transition-colors duration-500 opacity-0 group-hover:opacity-100"></div>
+            <div className="relative flex items-center bg-slate-50 rounded-2xl shadow-inner border border-slate-200 p-2 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all duration-300">
+              <button className="p-4 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200">
+                <Activity className="w-6 h-6" />
+              </button>
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                placeholder="Describe your symptoms or ask a health question..."
+                className="flex-1 px-4 py-3 bg-transparent focus:outline-none text-slate-900 placeholder-slate-400 font-medium"
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim()}
+                className="ml-2 bg-indigo-600 text-white px-8 py-3 rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-indigo-600/25 font-bold tracking-wide active:scale-95 flex items-center gap-2"
+              >
+                <span>Send</span>
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default ChatInterface;

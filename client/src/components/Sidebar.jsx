@@ -1,13 +1,14 @@
 import React from 'react';
+import { LayoutDashboard, MessageSquare, History, FileText, User, Settings } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }) => {
   const navItems = [
-    { id: 'dashboard', name: 'Dashboard', icon: '📊' },
-    { id: 'chat', name: 'Health Chat', icon: '💬' },
-    { id: 'history', name: 'History', icon: '📋' },
-    { id: 'reports', name: 'Reports', icon: '📄' },
-    { id: 'profile', name: 'Profile', icon: '👤' },
-    { id: 'settings', name: 'Settings', icon: '⚙️' }
+    { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
+    { id: 'chat', name: 'Health Chat', icon: MessageSquare },
+    { id: 'history', name: 'History', icon: History },
+    { id: 'reports', name: 'Reports', icon: FileText },
+    { id: 'profile', name: 'Profile', icon: User },
+    { id: 'settings', name: 'Settings', icon: Settings }
   ];
 
   return (
@@ -19,21 +20,24 @@ const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }) => {
       
       {/* Navigation */}
       <nav className="mt-8">
-        {navItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => {
-              setActiveTab(item.id);
-              setSidebarOpen(false);
-            }}
-            className={`w-full flex items-center px-6 py-3 text-left hover:bg-blue-50 transition-colors ${
-              activeTab === item.id ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600' : 'text-gray-700'
-            }`}
-          >
-            <span className="mr-3 text-lg">{item.icon}</span>
-            {item.name}
-          </button>
-        ))}
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              onClick={() => {
+                setActiveTab(item.id);
+                setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center px-6 py-3 text-left hover:bg-blue-50 transition-colors ${
+                activeTab === item.id ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600' : 'text-gray-700'
+              }`}
+            >
+              <span className="mr-3"><Icon className="w-5 h-5" /></span>
+              {item.name}
+            </button>
+          );
+        })}
       </nav>
       
       {/* User section */}
