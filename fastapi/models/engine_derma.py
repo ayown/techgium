@@ -20,7 +20,7 @@ class DermatologyRiskEngine(BaseRiskEngine):
         self.risk_score = 0
         self.flags: List[str] = []
         self.explanations: List[str] = []
-
+        
     # ---------------------------
     # Evaluation blocks
     # ---------------------------
