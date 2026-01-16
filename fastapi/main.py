@@ -7,7 +7,21 @@ from models.engine_neurofunctionalrisk import NeuroFunctionalRiskEngine # type: 
 from models.engine_posturerisk import PostureRiskEngine # type: ignore
 from models.engine_respiratory import RespiratoryRiskEngine # type: ignore
 from models.aggregator_hri import HealthRiskIndex # type: ignore
-app = FastAPI()
+from fastapi import APIRouter
+from pydantic import BaseModel
+from typing import List
+
+from ml.fusion.fusion_inference import FusionEngine
+from routes.health_assessment import router as health_router
+
+app = FastAPI(
+    title="Health Chamber Walkthrough Diagnosis API",
+    description="High-accuracy IoT sensor-based health risk assessment",
+    version="2.0.0"
+)
+
+# Register health assessment routes
+app.include_router(health_router)
 
 class Item(BaseModel):
     name: str
@@ -112,13 +126,32 @@ def assess_posture(data: PostureAssessment):
 		
 	except Exception as e:
 		return {"error": str(e)}
-		
-@app.post("/assess/complete")
-def complete_health_assessment(assessments: List[dict]):
-    try:
-        hri = HealthRiskIndex(assessments)
-        return hri.run()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 # To run the server:
 # uvicorn main:app --reload
+
+fusion_engine = FusionEngine()
+
+
+class FusionInput(BaseModel):
+    embeddings: List[List[float]]   # [[cardio_emb], [resp_emb]]
+
+
+@app.post("/assess/fusion")
+def assess_fusion(data: FusionInput):
+    return fusion_engine.run(data.embeddings)
+    
+    
+@app.post("/assess/complete")
+def complete_assessment(data: dict):
+    try:
+        embeddings = [
+            data["cardio"]["embedding"],
+            data["respiratory"]["embedding"]
+        ]
+
+        hri = HealthRiskIndex()
+        return hri.run(embeddings)
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
