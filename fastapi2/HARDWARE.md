@@ -367,9 +367,14 @@ MAX30102 Pinout:
 | USB | USB 2.0 | 12 Mbps | ESP32 DevKit | Host ↔ ESP32 (optional) |
 
 **Data Format (ESP32 → Host via UART):**
+
+> [!IMPORTANT]
+> The ESP32 must send data in the **exact format expected by the FastAPI `/api/v1/screening` endpoint**. See format below.
+
+**Raw Sensor Data (ESP32 → Python Serial Reader):**
 ```json
 {
-  "timestamp": 1234567890,
+  "timestamp": 1707050232,
   "radar": {
     "respiration_rate": 15.2,
     "breathing_depth": 0.73,
@@ -378,12 +383,106 @@ MAX30102 Pinout:
   "thermal": {
     "skin_temp_avg": 36.4,
     "skin_temp_max": 37.1,
-    "thermal_asymmetry": 0.3
+    "thermal_asymmetry": 0.3,
+    "thermal_map": [[36.1, 36.2, ...], ...]
   },
   "pulse_ox": {
     "spo2": 98,
     "heart_rate": 72
   }
+}
+```
+
+**Python Bridge (Transforms ESP32 data → API ScreeningRequest):**
+
+A Python script on the Raspberry Pi must transform the raw sensor data into the API format:
+
+```python
+# bridge.py - ESP32 to API bridge
+import serial
+import json
+import requests
+
+API_URL = "http://localhost:8000/api/v1/screening"
+
+def transform_to_api_format(esp32_data: dict) -> dict:
+    """Transform ESP32 sensor data to API ScreeningRequest format."""
+    return {
+        "patient_id": "WALK_THROUGH_PATIENT",
+        "include_validation": True,
+        "systems": [
+            {
+                "system": "cardiovascular",
+                "biomarkers": [
+                    {"name": "heart_rate", "value": esp32_data["pulse_ox"]["heart_rate"], 
+                     "unit": "bpm", "normal_range": [60, 100]},
+                    {"name": "spo2", "value": esp32_data["pulse_ox"]["spo2"], 
+                     "unit": "%", "normal_range": [95, 100]},
+                    {"name": "chest_micro_motion", "value": esp32_data["radar"]["micro_motion"],
+                     "unit": "normalized_amplitude", "normal_range": [0.001, 0.01]}
+                ]
+            },
+            {
+                "system": "respiratory",  # Maps to pulmonary
+                "biomarkers": [
+                    {"name": "respiration_rate", "value": esp32_data["radar"]["respiration_rate"],
+                     "unit": "breaths/min", "normal_range": [12, 20]},
+                    {"name": "breathing_depth", "value": esp32_data["radar"]["breathing_depth"],
+                     "unit": "normalized", "normal_range": [0.5, 1.0]}
+                ]
+            },
+            {
+                "system": "skin",
+                "biomarkers": [
+                    {"name": "skin_temperature", "value": esp32_data["thermal"]["skin_temp_avg"],
+                     "unit": "celsius", "normal_range": [35.5, 37.5]},
+                    {"name": "thermal_asymmetry", "value": esp32_data["thermal"]["thermal_asymmetry"],
+                     "unit": "delta_celsius", "normal_range": [0, 0.5]}
+                ]
+            }
+        ]
+    }
+
+# Main loop
+ser = serial.Serial('/dev/ttyUSB0', 115200)
+while True:
+    line = ser.readline().decode().strip()
+    if line:
+        esp32_data = json.loads(line)
+        api_payload = transform_to_api_format(esp32_data)
+        response = requests.post(API_URL, json=api_payload)
+        print(f"Screening ID: {response.json()['screening_id']}")
+```
+
+**Final API Request Format (what the API receives):**
+```json
+{
+  "patient_id": "WALK_THROUGH_PATIENT",
+  "include_validation": true,
+  "systems": [
+    {
+      "system": "cardiovascular",
+      "biomarkers": [
+        {"name": "heart_rate", "value": 72, "unit": "bpm", "normal_range": [60, 100]},
+        {"name": "spo2", "value": 98, "unit": "%", "normal_range": [95, 100]},
+        {"name": "chest_micro_motion", "value": 0.12, "unit": "normalized_amplitude"}
+      ]
+    },
+    {
+      "system": "pulmonary",
+      "biomarkers": [
+        {"name": "respiration_rate", "value": 15.2, "unit": "breaths/min"},
+        {"name": "breathing_depth", "value": 0.73, "unit": "normalized"}
+      ]
+    },
+    {
+      "system": "skin",
+      "biomarkers": [
+        {"name": "skin_temperature", "value": 36.4, "unit": "celsius"},
+        {"name": "thermal_asymmetry", "value": 0.3, "unit": "delta_celsius"}
+      ]
+    }
+  ]
 }
 ```
 
