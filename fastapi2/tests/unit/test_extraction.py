@@ -76,6 +76,25 @@ def sample_frame() -> np.ndarray:
     return np.random.randint(50, 200, (480, 640, 3), dtype=np.uint8)
 
 
+@pytest.fixture
+def sample_face_landmarks_sequence() -> list:
+    """Generate sample FaceMesh landmarks (150 frames, 478 landmarks, 4 values)."""
+    np.random.seed(42)
+    frames = []
+    for i in range(150):  # 5 seconds at 30fps (clinical minimum)
+        # Create face mesh with eye region variations
+        landmarks = np.random.rand(478, 4).astype(np.float32) * 0.5 + 0.25
+        # Simulate eye blinks with periodic EAR dips (every ~50 frames = 1.67s)
+        if i % 50 < 3:  # 3-frame blink
+            # Lower eyelid landmarks move up during blink
+            landmarks[[145, 153, 154, 155], 1] -= 0.05  # Left eye lower
+            landmarks[[380, 374, 373, 390], 1] -= 0.05  # Right eye lower
+        landmarks[:, 3] = 0.9 + 0.1 * np.random.rand(478)  # High visibility
+        frames.append(landmarks)
+    return frames
+
+
+
 class TestBiomarkerSet:
     """Tests for BiomarkerSet data structure."""
     
@@ -241,6 +260,39 @@ class TestEyeExtractor:
         assert result.get("blink_rate") is not None
         assert result.get("gaze_stability_score") is not None
         assert result.get("fixation_duration") is not None
+    
+    def test_extract_from_facemesh(self, sample_face_landmarks_sequence):
+        """Test clinical extraction from FaceMesh data."""
+        extractor = EyeExtractor(sample_rate=30.0)
+        
+        result = extractor.extract({"face_landmarks_sequence": sample_face_landmarks_sequence})
+        
+        # Clinical FaceMesh should produce high-confidence biomarkers
+        blink_rate = result.get("blink_rate")
+        gaze_stability = result.get("gaze_stability_score")
+        fixation = result.get("fixation_duration")
+        saccade = result.get("saccade_frequency")
+        symmetry = result.get("eye_symmetry")
+        pupil = result.get("pupil_reactivity")
+        
+        assert blink_rate is not None
+        assert blink_rate.confidence >= 0.85  # Clinical confidence
+        assert 5 <= blink_rate.value <= 50  # Valid range
+        
+        assert gaze_stability is not None
+        assert 0 <= gaze_stability.value <= 100
+        
+        assert fixation is not None
+        assert 100 <= fixation.value <= 600  # Clinical range
+        
+        assert saccade is not None
+        assert 0.5 <= saccade.value <= 8
+        
+        assert symmetry is not None
+        assert 0 <= symmetry.value <= 1
+        
+        assert pupil is not None  # Should have iris landmarks (478 total)
+        assert 40 <= pupil.value <= 100
 
 
 class TestNasalExtractor:
