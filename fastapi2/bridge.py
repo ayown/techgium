@@ -1,17 +1,29 @@
 """
 Hardware Bridge - ESP32 to FastAPI Integration
 
-This module provides seamless integration between hardware sensors (ESP32, camera, thermal)
-and the FastAPI health screening pipeline.
+This module provides seamless integration between hardware sensors and
+the FastAPI health screening pipeline.
 
-Components:
-- ESP32 serial reader (radar, thermal, pulse ox data)
-- Camera capture (rPPG, pose, face analysis)
-- Data fusion and synchronization
-- API client for screening endpoint
+ARCHITECTURE:
+┌─────────────────────────────────────────────────────────────┐
+│                    LAPTOP / PC                              │
+│  ┌────────────────┐      ┌─────────────────────────────┐   │
+│  │ Webcam/Camera  │─────►│        bridge.py            │   │
+│  │ (USB/built-in) │      │  • CameraCapture (OpenCV)   │   │
+│  └────────────────┘      │  • ESP32Reader (serial)     │   │
+│                          │  • DataFusion → API         │   │
+│  ┌────────────────┐      └─────────────────────────────┘   │
+│  │ ESP32 DevKit   │───────────────┘                        │
+│  │ (USB serial)   │    Serial @ 115200 baud                │
+│  └────────────────┘                                        │
+└─────────────────────────────────────────────────────────────┘
+
+The CAMERA connects DIRECTLY to the laptop (via USB or built-in).
+The ESP32 handles only: thermal, radar, pulse-ox sensors.
 
 Usage:
     python bridge.py [--port COM3] [--camera 0] [--api-url http://localhost:8000]
+    python bridge.py --simulate  # Test without any hardware
 """
 
 import asyncio

@@ -18,80 +18,63 @@
 
 ### System Block Diagram
 
+> [!IMPORTANT]
+> **Camera Connection:** The webcam connects DIRECTLY to your laptop/PC via USB, NOT to the ESP32. The ESP32 only handles the other sensors (thermal, radar, pulse-ox).
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                         WALK-THROUGH HEALTH SCREENING CHAMBER                    │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│   ┌──────────────────────┐                   ┌──────────────────────────────┐   │
-│   │   OPTICAL SENSORS    │                   │      RF/MOTION SENSORS       │   │
-│   ├──────────────────────┤                   ├──────────────────────────────┤   │
-│   │ ┌─────────────────┐  │                   │  ┌─────────────────────────┐ │   │
-│   │ │ Logitech C270   │──┼───USB─────────────┼──│   60 GHz mmWave Radar  │ │   │
-│   │ │ 1080p/30fps     │  │        │          │  │   (IWR6843 / AWR1642)  │ │   │
-│   │ │ rPPG, Pose, Eye │  │        │          │  │   Respiration, Motion  │ │   │
-│   │ └─────────────────┘  │        │          │  └───────────┬────────────┘ │   │
-│   │ ┌─────────────────┐  │        │          │              │UART/SPI      │   │
-│   │ │ MLX90640 Thermal│──┼───I2C──┼──┐       │              │              │   │
-│   │ │ 32×24 IR Array  │  │        │  │       └──────────────┼──────────────┘   │
-│   │ │ Skin Temp Map   │  │        │  │                      │                  │
-│   │ └─────────────────┘  │        │  │                      │                  │
-│   └──────────────────────┘        │  │                      │                  │
-│                                   │  │                      │                  │
-│   ┌──────────────────────┐        │  │                      │                  │
-│   │  CONTACT VALIDATION  │        │  │                      │                  │
-│   ├──────────────────────┤        │  │                      │                  │
-│   │ ┌─────────────────┐  │        │  │                      │                  │
-│   │ │ Pulse Oximeter  │──┼───I2C──┼──┤                      │                  │
-│   │ │ MAX30102        │  │        │  │                      │                  │
-│   │ │ SpO₂ + HR       │  │        │  │                      │                  │
-│   │ └─────────────────┘  │        │  │                      │                  │
-│   │ ┌─────────────────┐  │        │  │                      │                  │
-│   │ │ Glucometer      │──┼───UART─┼──┼──┐                   │                  │
-│   │ │ (External BLE)  │  │        │  │  │                   │                  │
-│   │ └─────────────────┘  │        │  │  │                   │                  │
-│   └──────────────────────┘        │  │  │                   │                  │
-│                                   ▼  ▼  ▼                   ▼                  │
-│                          ┌───────────────────────────────────┐                 │
-│                          │         ESP32-WROOM-32            │                 │
-│                          │       (Primary Controller)        │                 │
-│                          │                                   │                 │
-│                          │  GPIO34 ─ ADC (Spare Analog)      │                 │
-│                          │  GPIO21 ─ SDA (I2C Bus)           │                 │
-│                          │  GPIO22 ─ SCL (I2C Bus)           │                 │
-│                          │  GPIO16 ─ UART2 RX (Radar)        │                 │
-│                          │  GPIO17 ─ UART2 TX (Radar)        │                 │
-│                          │  GPIO01 ─ UART0 TX (Host/Debug)   │                 │
-│                          │  GPIO03 ─ UART0 RX (Host/Debug)   │                 │
-│                          │  GPIO04 ─ LED Status              │                 │
-│                          │  GPIO05 ─ LED Activity            │                 │
-│                          │  GPIO18 ─ Test Point 1            │                 │
-│                          │  GPIO19 ─ Test Point 2            │                 │
-│                          └─────────────┬─────────────────────┘                 │
-│                                        │ USB/UART                              │
-│                                        ▼                                        │
-│                          ┌───────────────────────────────────┐                 │
-│                          │           USB HUB                 │                 │
-│                          │        (4-Port Powered)           │                 │
-│                          └─────────────┬─────────────────────┘                 │
-│                                        │                                        │
-│                                        ▼                                        │
-│            ┌─────────────────────────────────────────────────────────┐         │
-│            │                    HOST PROCESSOR                        │         │
-│            │              (Raspberry Pi 4B / Intel NUC)               │         │
-│            │                                                          │         │
-│            │  ┌─────────────────────────────────────────────────┐    │         │
-│            │  │                   SOFTWARE                       │    │         │
-│            │  │  FastAPI Server ─────► Biomarker Extraction      │    │         │
-│            │  │  MediaPipe ──────────► Pose/Face Detection       │    │         │
-│            │  │  OpenCV ─────────────► Video Processing          │    │         │
-│            │  │  DL Models ──────────► BP/Stress/rPPG Inference  │    │         │
-│            │  │  LLM Agents ─────────► Report Generation         │    │         │
-│            │  └─────────────────────────────────────────────────┘    │         │
-│            └─────────────────────────────────────────────────────────┘         │
+│   ┌──────────────────────────────────────────────────────────────────────────┐  │
+│   │                  YOUR LAPTOP / PC (HOST)                                  │  │
+│   │  ┌─────────────────────────────────────────────────────────────────────┐ │  │
+│   │  │                                                                      │ │  │
+│   │  │   ┌─────────────────┐      ┌────────────────────────────────────┐   │ │  │
+│   │  │   │ Logitech C270   │      │           bridge.py                │   │ │  │
+│   │  │   │ / Laptop Webcam │─USB─►│  • CameraCapture (OpenCV)          │   │ │  │
+│   │  │   │ 1080p/30fps     │      │  • ESP32Reader (serial)            │   │ │  │
+│   │  │   └─────────────────┘      │  • DataFusion → FastAPI            │   │ │  │
+│   │  │                            └───────────────┬────────────────────┘   │ │  │
+│   │  │   ┌─────────────────┐                      │                        │ │  │
+│   │  │   │ ESP32 DevKit    │──────USB Serial──────┘                        │ │  │
+│   │  │   │ (via USB cable) │      @ 115200 baud                            │ │  │
+│   │  │   └─────────────────┘                                               │ │  │
+│   │  │                                                                      │ │  │
+│   │  └─────────────────────────────────────────────────────────────────────┘ │  │
+│   └──────────────────────────────────────────────────────────────────────────┘  │
+│                                      │                                           │
+│                                      │ USB (long cable if needed)                │
+│                                      ▼                                           │
+│   ┌──────────────────────────────────────────────────────────────────────────┐  │
+│   │                     ESP32 + SENSORS (Separate Station)                    │  │
+│   │                                                                           │  │
+│   │   ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐          │  │
+│   │   │ MLX90640        │  │ 60GHz mmWave    │  │ MAX30102        │          │  │
+│   │   │ Thermal Camera  │  │ Radar           │  │ Pulse Oximeter  │          │  │
+│   │   │ (I2C @ 0x33)    │  │ (UART2)         │  │ (I2C @ 0x57)    │          │  │
+│   │   └────────┬────────┘  └────────┬────────┘  └────────┬────────┘          │  │
+│   │            │                    │                    │                    │  │
+│   │            └────────────────────┼────────────────────┘                    │  │
+│   │                                 ▼                                         │  │
+│   │                    ┌────────────────────────┐                             │  │
+│   │                    │   ESP32-WROOM-32D      │                             │  │
+│   │                    │   (Sensor Hub)         │                             │  │
+│   │                    │   Sends JSON @ 20 Hz   │                             │  │
+│   │                    └────────────────────────┘                             │  │
+│   └──────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
+
+SUMMARY OF CONNECTIONS:
+═══════════════════════
+✓ Webcam/Camera    → USB      → Laptop (OpenCV reads directly)
+✓ ESP32            → USB      → Laptop (Serial JSON data)
+✓ Thermal Camera   → I2C      → ESP32
+✓ mmWave Radar     → UART     → ESP32
+✓ Pulse Oximeter   → I2C      → ESP32
 ```
+
 
 ---
 
@@ -299,36 +282,40 @@ MAX30102 Pinout:
             └────────────────────────────────────────────────────┘
 ```
 
-#### 2.4 USB Hub and Camera Connection
+#### 2.4 Camera and USB Connections
+
+> [!IMPORTANT]
+> The **camera connects directly to your laptop** via USB or uses the built-in laptop webcam. It does NOT connect to the ESP32 or Raspberry Pi.
 
 ```
-                USB TOPOLOGY
+                LAPTOP USB CONNECTIONS
     ┌──────────────────────────────────────────────────────────┐
     │                                                          │
-    │    Raspberry Pi 4B                                       │
+    │    YOUR LAPTOP / PC                                      │
     │    ┌─────────────────┐                                   │
-    │    │  USB 3.0 Port ──┼──► USB Hub (Powered 4-Port)       │
-    │    │                 │    ┌──────────────────────────┐   │
-    │    │                 │    │  Port 1 ─── Logitech C270│   │
-    │    │                 │    │  Port 2 ─── ESP32 (USB)  │   │
-    │    │                 │    │  Port 3 ─── Spare        │   │
-    │    │                 │    │  Port 4 ─── Spare        │   │
-    │    │                 │    └──────────────────────────┘   │
+    │    │  USB Port 1   ──┼──► Logitech C270 / Webcam        │
+    │    │                 │    (or use built-in camera)       │
     │    │                 │                                   │
-    │    │  GPIO Header ───┼──► (Optional: direct I2C to      │
-    │    │                 │     thermal camera if needed)     │
+    │    │  USB Port 2   ──┼──► ESP32 DevKit (USB-Micro)      │
+    │    │                 │    Serial @ 115200 baud           │
     │    │                 │                                   │
-    │    │  USB-C Power ───┼──► 5V/3A Power Supply             │
+    │    │  (Optional)     │                                   │
+    │    │  USB Hub      ──┼──► Additional devices             │
     │    └─────────────────┘                                   │
     │                                                          │
-    │    Camera Placement Notes:                               │
-    │    • Logitech C270 mounted at chest height (~1.2m)       │
-    │    • 1-2 meter distance from subject                     │
-    │    • Diffused LED lighting (avoid direct glare)          │
-    │    • 30fps capture for rPPG (sufficient for BPM 40-200)  │
+    │    For Demo/Hackathon:                                   │
+    │    • Just use laptop's built-in webcam (index 0)         │
+    │    • ESP32 connected via single USB cable                │
+    │    • No Raspberry Pi needed - laptop runs everything!    │
+    │                                                          │
+    │    Camera Settings:                                      │
+    │    • 720p or 1080p @ 30fps                               │
+    │    • Good lighting for rPPG                              │
+    │    • Distance: face capture 0.5-1m, body 2-3m            │
     │                                                          │
     └──────────────────────────────────────────────────────────┘
 ```
+
 
 ---
 
@@ -698,35 +685,110 @@ Lighting Requirements:
 
 ### 11. Software Integration Notes
 
-The hardware interfaces with the existing FastAPI software via:
+The hardware interfaces with the existing FastAPI software via the **bridge.py** script:
 
-1. **Logitech C270 → OpenCV → MediaPipe**
-   - Provides: [face_frames](file:///c:/Users/KOUSTAV%20BERA/OneDrive/Desktop/chiranjeevi/fastapi2/camera_test.py#556-656), [pose_sequence](file:///c:/Users/KOUSTAV%20BERA/OneDrive/Desktop/chiranjeevi/fastapi2/camera_test.py#452-492), [face_landmarks](file:///c:/Users/KOUSTAV%20BERA/OneDrive/Desktop/chiranjeevi/fastapi2/camera_test.py#494-554)
-   - Used by: [CardiovascularExtractor](file:///c:/Users/KOUSTAV%20BERA/OneDrive/Desktop/chiranjeevi/fastapi2/app/core/extraction/cardiovascular.py#19-625), `CNSExtractor`, `EyeExtractor`, `SkeletalExtractor`
+#### Key Files
 
-2. **mlX90640 → ESP32 → UART → Python serial**
-   - Provides: `thermal_data` (32×24 array)
-   - Used by: `SkinExtractor` (skin temperature mapping)
+| File | Purpose |
+|------|---------|
+| [bridge.py](file:///c:/Users/KOUSTAV%20BERA/OneDrive/Desktop/chiranjeevi/fastapi2/bridge.py) | Main integration script |
+| [esp32_health_bridge.ino](file:///c:/Users/KOUSTAV%20BERA/OneDrive/Desktop/chiranjeevi/fastapi2/firmware/esp32_health_bridge.ino) | ESP32 Arduino firmware |
+| [HARDWARE_QUICKSTART.md](file:///c:/Users/KOUSTAV%20BERA/OneDrive/Desktop/chiranjeevi/fastapi2/HARDWARE_QUICKSTART.md) | Quick start guide |
 
-3. **mmWave Radar → ESP32 → UART → Python serial**
-   - Provides: `radar_data` (respiration rate, breathing depth, micro-motion)
-   - Used by: [CardiovascularExtractor](file:///c:/Users/KOUSTAV%20BERA/OneDrive/Desktop/chiranjeevi/fastapi2/app/core/extraction/cardiovascular.py#19-625) (chest_micro_motion), respiratory proxy
+#### Data Flow Architecture
 
-4. **MAX30102 → ESP32 → UART → Python serial**
-   - Provides: `vital_signs` (SpO₂, heart_rate)
-   - Used by: [CardiovascularExtractor](file:///c:/Users/KOUSTAV%20BERA/OneDrive/Desktop/chiranjeevi/fastapi2/app/core/extraction/cardiovascular.py#19-625) (ground truth calibration)
-
-**ESP32 Firmware Loop:**
 ```
-while(true) {
-    read_mlx90640_frame();
-    read_max30102_values();
-    process_radar_data();
+┌─────────────────────────────────────────────────────────────────────┐
+│                        HARDWARE LAYER                                │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │
+│  │ mmWave Radar │  │ MLX90640     │  │ MAX30102     │               │
+│  │ (Respiration)│  │ (Thermal)    │  │ (SpO2/HR)    │               │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘               │
+│         │                 │                 │                        │
+│         └────────────────┬┴─────────────────┘                        │
+│                          ▼                                           │
+│              ┌────────────────────────┐                              │
+│              │  ESP32 (sensor fusion) │                              │
+│              │  JSON via UART @ 20 Hz │                              │
+│              └───────────┬────────────┘                              │
+└──────────────────────────┼───────────────────────────────────────────┘
+                           │ Serial USB
+                           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        BRIDGE LAYER (bridge.py)                      │
+│                                                                      │
+│  ┌──────────────┐  ┌──────────────────────┐  ┌─────────────────┐    │
+│  │ ESP32Reader  │  │ CameraCapture        │  │ DataFusion      │    │
+│  │ (Serial JSON)│  │ (rPPG + Pose)        │  │ (API Transform) │    │
+│  └──────┬───────┘  └──────────┬───────────┘  └────────┬────────┘    │
+│         │                     │                       │              │
+│         └─────────────────────┴───────────────────────┘              │
+│                               │                                      │
+│                               ▼                                      │
+│              ┌────────────────────────────┐                          │
+│              │  build_screening_request() │                          │
+│              │  → POST /api/v1/screening  │                          │
+│              └────────────────────────────┘                          │
+└──────────────────────────────────────────────────────────────────────┘
+                                │ HTTP POST
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        API LAYER (FastAPI)                           │
+│  ┌───────────────────────────────────────────────────────────┐      │
+│  │ /api/v1/screening                                          │      │
+│  │  → RiskEngine.compute_risk()                               │      │
+│  │  → CompositeRiskCalculator                                 │      │
+│  │  → AgentConsensus (LLM validation)                         │      │
+│  └───────────────────────────────────────────────────────────┘      │
+│                               │                                      │
+│                               ▼                                      │
+│  ┌───────────────────────────────────────────────────────────┐      │
+│  │ /api/v1/reports/generate                                   │      │
+│  │  → PatientReportGenerator.generate()                       │      │
+│  │  → DoctorReportGenerator.generate()                        │      │
+│  └───────────────────────────────────────────────────────────┘      │
+└──────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+                    ┌───────────────────┐
+                    │   PDF Reports     │
+                    │   reports/*.pdf   │
+                    └───────────────────┘
+```
+
+#### Quick Test (No Hardware)
+
+```bash
+# Terminal 1: Start API
+uvicorn app.main:app --reload
+
+# Terminal 2: Test with simulated sensors
+python bridge.py --simulate
+```
+
+#### ESP32 Firmware
+
+The ESP32 firmware sends JSON at 20 Hz:
+
+```c
+// firmware/esp32_health_bridge.ino
+void sendJsonData() {
+    StaticJsonDocument<512> doc;
+    doc["timestamp"] = millis() / 1000;
     
-    json_packet = format_json(timestamp, thermal, pulse, radar);
-    serial_send(json_packet);
+    JsonObject radar = doc.createNestedObject("radar");
+    radar["respiration_rate"] = respirationRate;
+    radar["breathing_depth"] = breathingDepth;
     
-    delay(50);  // 20 Hz output
+    JsonObject thermal = doc.createNestedObject("thermal");
+    thermal["skin_temp_avg"] = skinTempAvg;
+    
+    JsonObject pulseOx = doc.createNestedObject("pulse_ox");
+    pulseOx["heart_rate"] = heartRate;
+    pulseOx["spo2"] = spO2;
+    
+    serializeJson(doc, Serial);
+    Serial.println();
 }
 ```
 
