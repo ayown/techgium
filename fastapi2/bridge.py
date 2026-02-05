@@ -1,28 +1,58 @@
 """
-Hardware Bridge - ESP32 to FastAPI Integration
+Hardware Bridge - Split-USB Architecture Integration
 
 This module provides seamless integration between hardware sensors and
-the FastAPI health screening pipeline.
+the FastAPI health screening pipeline using a Split-USB topology.
 
-ARCHITECTURE:
-┌─────────────────────────────────────────────────────────────┐
-│                    LAPTOP / PC                              │
-│  ┌────────────────┐      ┌─────────────────────────────┐   │
-│  │ Webcam/Camera  │─────►│        bridge.py            │   │
-│  │ (USB/built-in) │      │  • CameraCapture (OpenCV)   │   │
-│  └────────────────┘      │  • ESP32Reader (serial)     │   │
-│                          │  • DataFusion → API         │   │
-│  ┌────────────────┐      └─────────────────────────────┘   │
-│  │ ESP32 DevKit   │───────────────┘                        │
-│  │ (USB serial)   │    Serial @ 115200 baud                │
-│  └────────────────┘                                        │
-└─────────────────────────────────────────────────────────────┘
+SPLIT-USB ARCHITECTURE:
+┌─────────────────────────────────────────────────────────────────┐
+│                    LAPTOP / PC                                  │
+│                                                                 │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │                      bridge.py                           │   │
+│   │                                                          │   │
+│   │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │   │
+│   │  │ CameraCapture│  │ RadarReader  │  │ ESP32Reader  │   │   │
+│   │  │ (OpenCV)     │  │ (Serial)     │  │ (Serial)     │   │   │
+│   │  │ Webcam       │  │ COM_A        │  │ COM_B        │   │   │
+│   │  │ Video Data   │  │ Breathing HR │  │ Thermal Data │   │   │
+│   │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘   │   │
+│   │         │                 │                 │            │   │
+│   │         └─────────────────┴─────────────────┘            │   │
+│   │                           │                              │   │
+│   │                    DataFusion                            │   │
+│   │                           │                              │   │
+│   │                           ▼                              │   │
+│   │               POST /api/v1/screening                     │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                      ▲                          │
+│                                      │ USB                      │
+│   ┌──────────────────────────────────┴────────────────────┐     │
+│   │                4-PORT USB 2.0 HUB                      │     │
+│   └───┬─────────────────┬─────────────────┬───────────────┘     │
+│       │                 │                 │                      │
+│       ▼                 ▼                 ▼                      │
+│   ┌────────┐     ┌────────────┐    ┌────────────┐               │
+│   │ Webcam │     │ Seeed Radar│    │ ESP32      │               │
+│   │        │     │ MR60BHA2   │    │ NodeMCU    │               │
+│   │        │     │ (USB/COM_A)│    │ (USB/COM_B)│               │
+│   └────────┘     └────────────┘    └─────┬──────┘               │
+│                                          │ I2C                   │
+│                                          ▼                       │
+│                                    ┌────────────┐               │
+│                                    │ MLX90640   │               │
+│                                    │ Thermal    │               │
+│                                    └────────────┘               │
+└─────────────────────────────────────────────────────────────────┘
 
-The CAMERA connects DIRECTLY to the laptop (via USB or built-in).
-The ESP32 handles only: thermal, radar, pulse-ox sensors.
+Key Design Points:
+- Webcam connects directly to laptop via USB Hub (Video to OpenCV)
+- Seeed Radar Kit connects via USB Hub (Serial/COM_A - Breathing & HR)
+- ESP32 NodeMCU connects via USB Hub (Serial/COM_B - Thermal only)
+- MLX90640 thermal camera connects to ESP32 via I2C
 
 Usage:
-    python bridge.py [--port COM3] [--camera 0] [--api-url http://localhost:8000]
+    python bridge.py --radar-port COM3 --port COM4 --camera 0
     python bridge.py --simulate  # Test without any hardware
 """
 
@@ -68,10 +98,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BridgeConfig:
-    """Configuration for the hardware bridge."""
-    # Serial (ESP32)
-    serial_port: str = "COM3"  # Windows: COM3, Linux: /dev/ttyUSB0
+    """Configuration for the hardware bridge (Split-USB Architecture)."""
+    
+    # Serial - ESP32 NodeMCU (Thermal Data)
+    serial_port: str = "COM4"  # Windows: COM4, Linux: /dev/ttyUSB1
     serial_baud: int = 115200
+    
+    # Serial - Seeed Radar Kit (Breathing/Heartbeat Data)
+    radar_port: str = "COM3"  # Windows: COM3, Linux: /dev/ttyUSB0
+    radar_baud: int = 115200
     
     # Camera
     camera_index: int = 0
@@ -89,22 +124,23 @@ class BridgeConfig:
 
 
 # ==============================================================================
-# ESP32 SERIAL READER
+# BASE SERIAL READER
 # ==============================================================================
 
-class ESP32Reader:
-    """Reads sensor data from ESP32 via serial port."""
+class BaseSerialReader:
+    """Base class for serial port readers."""
     
-    def __init__(self, port: str, baud: int = 115200):
+    def __init__(self, port: str, baud: int = 115200, name: str = "Device"):
         self.port = port
         self.baud = baud
+        self.name = name
         self.serial_conn: Optional[serial.Serial] = None
         self.running = False
         self.data_queue: queue.Queue = queue.Queue(maxsize=100)
         self.last_data: Dict[str, Any] = {}
         
     def connect(self) -> bool:
-        """Connect to ESP32 serial port."""
+        """Connect to serial port."""
         if not SERIAL_AVAILABLE:
             logger.error("pyserial not installed")
             return False
@@ -115,18 +151,18 @@ class ESP32Reader:
                 baudrate=self.baud,
                 timeout=1.0
             )
-            logger.info(f"Connected to ESP32 on {self.port}")
+            logger.info(f"Connected to {self.name} on {self.port}")
             return True
         except serial.SerialException as e:
-            logger.error(f"Failed to connect to {self.port}: {e}")
+            logger.error(f"Failed to connect to {self.name} on {self.port}: {e}")
             return False
     
     def disconnect(self):
-        """Disconnect from ESP32."""
+        """Disconnect from serial port."""
         self.running = False
         if self.serial_conn and self.serial_conn.is_open:
             self.serial_conn.close()
-            logger.info("Disconnected from ESP32")
+            logger.info(f"Disconnected from {self.name}")
     
     def read_loop(self):
         """Background thread to read serial data."""
@@ -135,22 +171,30 @@ class ESP32Reader:
             try:
                 line = self.serial_conn.readline().decode('utf-8').strip()
                 if line:
-                    data = json.loads(line)
-                    data['received_at'] = time.time()
-                    self.last_data = data
-                    
-                    # Add to queue (drop oldest if full)
-                    try:
-                        self.data_queue.put_nowait(data)
-                    except queue.Full:
-                        self.data_queue.get()
-                        self.data_queue.put_nowait(data)
+                    data = self.parse_data(line)
+                    if data:
+                        data['received_at'] = time.time()
+                        self.last_data = data
+                        
+                        # Add to queue (drop oldest if full)
+                        try:
+                            self.data_queue.put_nowait(data)
+                        except queue.Full:
+                            self.data_queue.get()
+                            self.data_queue.put_nowait(data)
                         
             except json.JSONDecodeError as e:
-                logger.debug(f"Invalid JSON from ESP32: {e}")
+                logger.debug(f"Invalid JSON from {self.name}: {e}")
             except Exception as e:
-                logger.error(f"Serial read error: {e}")
+                logger.error(f"Serial read error ({self.name}): {e}")
                 time.sleep(0.1)
+    
+    def parse_data(self, line: str) -> Optional[Dict[str, Any]]:
+        """Parse incoming data. Override in subclasses for custom formats."""
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError:
+            return None
     
     def start_reading(self):
         """Start background reading thread."""
@@ -161,6 +205,80 @@ class ESP32Reader:
     def get_latest_data(self) -> Optional[Dict[str, Any]]:
         """Get most recent sensor data."""
         return self.last_data if self.last_data else None
+
+
+# ==============================================================================
+# ESP32 SERIAL READER (Thermal Data)
+# ==============================================================================
+
+class ESP32Reader(BaseSerialReader):
+    """Reads thermal sensor data from ESP32 NodeMCU via serial port.
+    
+    Expected JSON format from ESP32:
+    {
+        "timestamp": 1707050232,
+        "thermal": {
+            "skin_temp_avg": 36.4,
+            "skin_temp_max": 37.1,
+            "thermal_asymmetry": 0.3,
+            "thermal_map": [[36.1, 36.2, ...], ...]
+        }
+    }
+    """
+    
+    def __init__(self, port: str, baud: int = 115200):
+        super().__init__(port, baud, name="ESP32 NodeMCU (Thermal)")
+
+
+# ==============================================================================
+# RADAR SERIAL READER (Seeed MR60BHA2)
+# ==============================================================================
+
+class RadarReader(BaseSerialReader):
+    """Reads breathing and heartbeat data from Seeed MR60BHA2 Radar Kit.
+    
+    Expected JSON format from Seeed Radar Kit:
+    {
+        "timestamp": 1707050232,
+        "radar": {
+            "respiration_rate": 15.2,
+            "heart_rate": 72,
+            "breathing_depth": 0.73,
+            "presence_detected": true
+        }
+    }
+    
+    Note: The actual Seeed MR60BHA2 output format may differ.
+    Refer to: https://wiki.seeedstudio.com/mmwave_kit/
+    """
+    
+    def __init__(self, port: str, baud: int = 115200):
+        super().__init__(port, baud, name="Seeed Radar Kit (MR60BHA2)")
+    
+    def parse_data(self, line: str) -> Optional[Dict[str, Any]]:
+        """Parse radar data. May need adjustment for actual Seeed protocol."""
+        try:
+            data = json.loads(line)
+            
+            # Normalize to expected format if needed
+            if "radar" not in data and any(k in data for k in ["respiration_rate", "heart_rate", "breathing_depth"]):
+                # Wrap flat data into radar object
+                data = {
+                    "timestamp": data.get("timestamp", int(time.time())),
+                    "radar": {
+                        "respiration_rate": data.get("respiration_rate"),
+                        "heart_rate": data.get("heart_rate"),
+                        "breathing_depth": data.get("breathing_depth"),
+                        "presence_detected": data.get("presence_detected", True)
+                    }
+                }
+            
+            return data
+            
+        except json.JSONDecodeError:
+            # TODO: Handle binary/proprietary Seeed protocol if needed
+            logger.debug(f"Non-JSON data from radar: {line[:50]}...")
+            return None
 
 
 # ==============================================================================
@@ -327,68 +445,35 @@ class CameraCapture:
 # ==============================================================================
 
 class DataFusion:
-    """Fuses sensor data and sends to API."""
+    """Fuses sensor data from multiple sources and sends to API."""
     
     def __init__(self, api_url: str):
         self.api_url = api_url
         self.screening_endpoint = f"{api_url}/api/v1/screening"
         self.report_endpoint = f"{api_url}/api/v1/reports/generate"
     
-    def transform_esp32_data(self, esp32_data: Dict[str, Any]) -> List[Dict]:
-        """Transform ESP32 sensor data to API biomarker format."""
+    def transform_radar_data(self, radar_data: Dict[str, Any]) -> List[Dict]:
+        """Transform Seeed Radar Kit data to API biomarker format."""
         systems = []
         
-        # Cardiovascular biomarkers from pulse oximeter
-        if "pulse_ox" in esp32_data:
-            pulse = esp32_data["pulse_ox"]
-            cv_biomarkers = []
+        if "radar" in radar_data:
+            radar = radar_data["radar"]
             
-            if "heart_rate" in pulse:
-                cv_biomarkers.append({
-                    "name": "heart_rate",
-                    "value": float(pulse["heart_rate"]),
-                    "unit": "bpm",
-                    "normal_range": [60, 100]
-                })
-            if "spo2" in pulse:
-                cv_biomarkers.append({
-                    "name": "spo2",
-                    "value": float(pulse["spo2"]),
-                    "unit": "%",
-                    "normal_range": [95, 100]
-                })
-            
-            if cv_biomarkers:
-                systems.append({
-                    "system": "cardiovascular",
-                    "biomarkers": cv_biomarkers
-                })
-        
-        # Respiratory biomarkers from radar
-        if "radar" in esp32_data:
-            radar = esp32_data["radar"]
+            # Respiratory biomarkers
             resp_biomarkers = []
-            
-            if "respiration_rate" in radar:
+            if radar.get("respiration_rate") is not None:
                 resp_biomarkers.append({
                     "name": "respiration_rate",
                     "value": float(radar["respiration_rate"]),
                     "unit": "breaths/min",
                     "normal_range": [12, 20]
                 })
-            if "breathing_depth" in radar:
+            if radar.get("breathing_depth") is not None:
                 resp_biomarkers.append({
                     "name": "breathing_depth",
                     "value": float(radar["breathing_depth"]),
                     "unit": "normalized",
                     "normal_range": [0.5, 1.0]
-                })
-            if "micro_motion" in radar:
-                resp_biomarkers.append({
-                    "name": "chest_micro_motion",
-                    "value": float(radar["micro_motion"]),
-                    "unit": "normalized_amplitude",
-                    "normal_range": [0.001, 0.01]
                 })
             
             if resp_biomarkers:
@@ -396,27 +481,45 @@ class DataFusion:
                     "system": "pulmonary",
                     "biomarkers": resp_biomarkers
                 })
+            
+            # Cardiovascular from radar (heart rate if available)
+            if radar.get("heart_rate") is not None:
+                systems.append({
+                    "system": "cardiovascular",
+                    "biomarkers": [{
+                        "name": "heart_rate_radar",
+                        "value": float(radar["heart_rate"]),
+                        "unit": "bpm",
+                        "normal_range": [60, 100]
+                    }]
+                })
+        
+        return systems
+    
+    def transform_esp32_data(self, esp32_data: Dict[str, Any]) -> List[Dict]:
+        """Transform ESP32 thermal sensor data to API biomarker format."""
+        systems = []
         
         # Skin biomarkers from thermal camera
         if "thermal" in esp32_data:
             thermal = esp32_data["thermal"]
             skin_biomarkers = []
             
-            if "skin_temp_avg" in thermal:
+            if thermal.get("skin_temp_avg") is not None:
                 skin_biomarkers.append({
                     "name": "skin_temperature",
                     "value": float(thermal["skin_temp_avg"]),
                     "unit": "celsius",
                     "normal_range": [35.5, 37.5]
                 })
-            if "thermal_asymmetry" in thermal:
+            if thermal.get("thermal_asymmetry") is not None:
                 skin_biomarkers.append({
                     "name": "thermal_asymmetry",
                     "value": float(thermal["thermal_asymmetry"]),
                     "unit": "delta_celsius",
                     "normal_range": [0, 0.5]
                 })
-            if "skin_temp_max" in thermal:
+            if thermal.get("skin_temp_max") is not None:
                 skin_biomarkers.append({
                     "name": "skin_temperature_max",
                     "value": float(thermal["skin_temp_max"]),
@@ -574,6 +677,7 @@ class DataFusion:
     def build_screening_request(
         self,
         patient_id: str,
+        radar_data: Optional[Dict] = None,
         esp32_data: Optional[Dict] = None,
         face_frames: Optional[List[np.ndarray]] = None,
         pose_sequence: Optional[List[np.ndarray]] = None,
@@ -582,11 +686,15 @@ class DataFusion:
         """Build complete screening request from all data sources."""
         systems = []
         
-        # Add ESP32 sensor data
+        # Add Seeed Radar Kit data (breathing, heart rate)
+        if radar_data:
+            systems.extend(self.transform_radar_data(radar_data))
+        
+        # Add ESP32 thermal data
         if esp32_data:
             systems.extend(self.transform_esp32_data(esp32_data))
         
-        # Add rPPG biomarkers
+        # Add rPPG biomarkers from camera
         if face_frames and len(face_frames) > 0:
             rppg_biomarkers = self.extract_rppg_biomarkers(face_frames, fps)
             if rppg_biomarkers:
@@ -600,7 +708,7 @@ class DataFusion:
                         "biomarkers": rppg_biomarkers
                     })
         
-        # Add motion biomarkers
+        # Add motion biomarkers from pose
         if pose_sequence and len(pose_sequence) > 0:
             cns_biomarkers, skeletal_biomarkers = self.extract_motion_biomarkers(pose_sequence)
             
@@ -657,10 +765,11 @@ class DataFusion:
 # ==============================================================================
 
 class HardwareBridge:
-    """Main controller for hardware-software integration."""
+    """Main controller for Split-USB hardware-software integration."""
     
     def __init__(self, config: BridgeConfig):
         self.config = config
+        self.radar_reader: Optional[RadarReader] = None
         self.esp32_reader: Optional[ESP32Reader] = None
         self.camera: Optional[CameraCapture] = None
         self.data_fusion = DataFusion(config.api_url)
@@ -670,14 +779,24 @@ class HardwareBridge:
         """Initialize all hardware connections."""
         success = True
         
-        # Initialize ESP32
+        # Initialize Seeed Radar Kit reader (COM_A)
+        if SERIAL_AVAILABLE:
+            self.radar_reader = RadarReader(
+                port=self.config.radar_port,
+                baud=self.config.radar_baud
+            )
+            if not self.radar_reader.connect():
+                logger.warning("Seeed Radar Kit not connected - continuing without radar")
+                self.radar_reader = None
+        
+        # Initialize ESP32 reader (COM_B - Thermal)
         if SERIAL_AVAILABLE:
             self.esp32_reader = ESP32Reader(
                 port=self.config.serial_port,
                 baud=self.config.serial_baud
             )
             if not self.esp32_reader.connect():
-                logger.warning("ESP32 not connected - continuing without sensors")
+                logger.warning("ESP32 (Thermal) not connected - continuing without thermal")
                 self.esp32_reader = None
         
         # Initialize camera
@@ -692,19 +811,25 @@ class HardwareBridge:
         return success
     
     def run_single_screening(self, patient_id: str = "WALKTHROUGH_PATIENT") -> Optional[Dict]:
-        """Run a complete screening session."""
+        """Run a complete screening session with Split-USB architecture."""
         logger.info("=" * 60)
-        logger.info("Starting health screening session")
+        logger.info("Starting health screening session (Split-USB Architecture)")
         logger.info("=" * 60)
         
+        radar_data = None
         esp32_data = None
         face_frames = []
         body_frames = []
         pose_sequence = []
         
-        # Start ESP32 data collection
+        # Start Seeed Radar Kit data collection (COM_A)
+        if self.radar_reader:
+            logger.info("Starting Seeed Radar Kit data collection (COM_A)...")
+            self.radar_reader.start_reading()
+        
+        # Start ESP32 thermal data collection (COM_B)
         if self.esp32_reader:
-            logger.info("Starting sensor data collection...")
+            logger.info("Starting ESP32 thermal data collection (COM_B)...")
             self.esp32_reader.start_reading()
         
         # Phase 1: Face capture for rPPG
@@ -725,19 +850,28 @@ class HardwareBridge:
             pose_sequence = self.camera.extract_pose_sequence(body_frames)
             logger.info(f"Extracted {len(pose_sequence)} pose frames")
         
-        # Get ESP32 sensor data
+        # Get Seeed Radar Kit data
+        if self.radar_reader:
+            radar_data = self.radar_reader.get_latest_data()
+            if radar_data:
+                logger.info(f"Radar data received: {list(radar_data.get('radar', {}).keys())}")
+            else:
+                logger.warning("No radar data received")
+        
+        # Get ESP32 thermal data
         if self.esp32_reader:
             esp32_data = self.esp32_reader.get_latest_data()
             if esp32_data:
-                logger.info(f"ESP32 data received: {list(esp32_data.keys())}")
+                logger.info(f"Thermal data received: {list(esp32_data.get('thermal', {}).keys())}")
             else:
-                logger.warning("No ESP32 data received")
+                logger.warning("No thermal data received")
         
         # Build and send screening request
         logger.info("\n📊 Processing biomarkers and sending to API...")
         
         request = self.data_fusion.build_screening_request(
             patient_id=patient_id,
+            radar_data=radar_data,
             esp32_data=esp32_data,
             face_frames=face_frames if face_frames else None,
             pose_sequence=pose_sequence if pose_sequence else None,
@@ -772,6 +906,8 @@ class HardwareBridge:
     
     def cleanup(self):
         """Cleanup all resources."""
+        if self.radar_reader:
+            self.radar_reader.disconnect()
         if self.esp32_reader:
             self.esp32_reader.disconnect()
         if self.camera:
@@ -780,26 +916,30 @@ class HardwareBridge:
 
 
 # ==============================================================================
-# SIMULATED ESP32 DATA (for testing without hardware)
+# SIMULATED DATA (for testing without hardware)
 # ==============================================================================
 
-def generate_simulated_esp32_data() -> Dict[str, Any]:
-    """Generate realistic simulated sensor data for testing."""
+def generate_simulated_radar_data() -> Dict[str, Any]:
+    """Generate realistic simulated Seeed Radar Kit data."""
     return {
         "timestamp": int(time.time()),
         "radar": {
             "respiration_rate": round(np.random.uniform(12, 18), 1),
+            "heart_rate": int(np.random.uniform(65, 85)),
             "breathing_depth": round(np.random.uniform(0.5, 0.9), 2),
-            "micro_motion": round(np.random.uniform(0.002, 0.008), 4)
-        },
+            "presence_detected": True
+        }
+    }
+
+
+def generate_simulated_esp32_data() -> Dict[str, Any]:
+    """Generate realistic simulated ESP32 thermal data."""
+    return {
+        "timestamp": int(time.time()),
         "thermal": {
             "skin_temp_avg": round(np.random.uniform(36.0, 37.0), 1),
             "skin_temp_max": round(np.random.uniform(36.5, 37.5), 1),
             "thermal_asymmetry": round(np.random.uniform(0.1, 0.4), 2)
-        },
-        "pulse_ox": {
-            "spo2": int(np.random.uniform(96, 99)),
-            "heart_rate": int(np.random.uniform(65, 85))
         }
     }
 
@@ -809,16 +949,38 @@ def generate_simulated_esp32_data() -> Dict[str, Any]:
 # ==============================================================================
 
 def main():
-    """Main entry point for hardware bridge."""
-    parser = argparse.ArgumentParser(description="Hardware Bridge for Health Screening")
-    parser.add_argument("--port", default="COM3", help="ESP32 serial port")
-    parser.add_argument("--camera", type=int, default=0, help="Camera index")
-    parser.add_argument("--api-url", default="http://localhost:8000", help="API URL")
-    parser.add_argument("--simulate", action="store_true", help="Use simulated sensor data")
-    parser.add_argument("--patient-id", default="WALKTHROUGH_001", help="Patient ID")
+    """Main entry point for hardware bridge (Split-USB Architecture)."""
+    parser = argparse.ArgumentParser(
+        description="Hardware Bridge for Health Screening (Split-USB Architecture)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python bridge.py --radar-port COM3 --port COM4 --camera 0
+  python bridge.py --simulate
+  python bridge.py --simulate --patient-id PATIENT_123
+
+Split-USB Architecture:
+  - Radar (Seeed MR60BHA2): --radar-port (default: COM3)
+  - ESP32 Thermal: --port (default: COM4)
+  - Webcam: --camera (default: 0)
+        """
+    )
+    parser.add_argument("--radar-port", default="COM3", 
+                        help="Serial port for Seeed Radar Kit (COM_A)")
+    parser.add_argument("--port", default="COM4", 
+                        help="Serial port for ESP32 NodeMCU thermal (COM_B)")
+    parser.add_argument("--camera", type=int, default=0, 
+                        help="Camera index for OpenCV")
+    parser.add_argument("--api-url", default="http://localhost:8000", 
+                        help="FastAPI server URL")
+    parser.add_argument("--simulate", action="store_true", 
+                        help="Use simulated sensor data (no hardware)")
+    parser.add_argument("--patient-id", default="WALKTHROUGH_001", 
+                        help="Patient identifier")
     args = parser.parse_args()
     
     config = BridgeConfig(
+        radar_port=args.radar_port,
         serial_port=args.port,
         camera_index=args.camera,
         api_url=args.api_url
@@ -829,25 +991,45 @@ def main():
     try:
         print("\n" + "=" * 60)
         print("  HEALTH SCREENING HARDWARE BRIDGE")
+        print("  Split-USB Architecture")
         print("=" * 60)
+        print(f"\nConfiguration:")
+        print(f"  Radar Port (Seeed):  {config.radar_port}")
+        print(f"  ESP32 Port (Thermal): {config.serial_port}")
+        print(f"  Camera Index:         {config.camera_index}")
+        print(f"  API URL:              {config.api_url}")
         
         if args.simulate:
             print("\n⚠️  SIMULATION MODE - Using generated sensor data")
-            # Create mock ESP32 data
-            simulated_data = generate_simulated_esp32_data()
-            print(f"Simulated data: {json.dumps(simulated_data, indent=2)}")
             
-            # Send directly
+            # Create mock data for both sensors
+            simulated_radar = generate_simulated_radar_data()
+            simulated_thermal = generate_simulated_esp32_data()
+            
+            print(f"\nSimulated Radar Data:")
+            print(json.dumps(simulated_radar, indent=2))
+            print(f"\nSimulated Thermal Data:")
+            print(json.dumps(simulated_thermal, indent=2))
+            
+            # Send directly using DataFusion
             fusion = DataFusion(config.api_url)
             request = fusion.build_screening_request(
                 patient_id=args.patient_id,
-                esp32_data=simulated_data
+                radar_data=simulated_radar,
+                esp32_data=simulated_thermal
             )
+            
+            print(f"\nAPI Request ({len(request['systems'])} systems):")
+            for sys in request['systems']:
+                print(f"  - {sys['system']}: {len(sys['biomarkers'])} biomarkers")
+            
             result = fusion.send_screening(request)
             
             if result:
                 print(f"\n✅ Screening ID: {result.get('screening_id')}")
                 print(f"Risk Level: {result.get('overall_risk_level')}")
+            else:
+                print("\n❌ Screening failed - Is the API server running?")
         else:
             bridge.initialize()
             bridge.run_single_screening(patient_id=args.patient_id)
