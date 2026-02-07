@@ -212,11 +212,13 @@ class RiskEngine:
         weights = self._risk_weights.get(system, {})
         weighted_scores = []
         confidences = []
+        actual_weights = []  # Track actual weights for proper normalization
         
         for biomarker in biomarker_set.biomarkers:
             bm_risk, bm_alert = self._calculate_biomarker_risk(biomarker)
             
             weight = weights.get(biomarker.name, 0.1)
+            actual_weights.append(weight)
             weighted_scores.append(bm_risk * weight)
             confidences.append(biomarker.confidence * weight)
             
@@ -232,9 +234,9 @@ class RiskEngine:
                 explanation=self._generate_biomarker_explanation(biomarker, bm_risk)
             ))
         
-        # Compute overall risk
+        # Compute overall risk with proper weight normalization
         if weighted_scores:
-            total_weight = sum(weights.get(bm.name, 0.1) for bm in biomarker_set.biomarkers)
+            total_weight = sum(actual_weights)
             overall_score = sum(weighted_scores) / total_weight if total_weight > 0 else 50.0
             overall_confidence = sum(confidences) / total_weight if total_weight > 0 else 0.5
         else:
@@ -414,24 +416,27 @@ class RiskEngine:
         low, high = biomarker.normal_range
         value = biomarker.value
         
+        # Use range width for consistent deviation calculation
+        range_width = (high - low) if high != low else 1.0
+        
         # Calculate deviation from normal range
         if low <= value <= high:
             # Within normal range
             # Score based on closeness to center
             center = (low + high) / 2
-            range_half = (high - low) / 2
+            range_half = range_width / 2
             deviation = abs(value - center) / (range_half + 1e-6)
             risk = 20 * deviation  # 0-20 within normal
             return risk, None
         elif value < low:
-            # Below normal
-            deviation = (low - value) / (low + 1e-6)
+            # Below normal - deviation relative to range width
+            deviation = (low - value) / range_width
             risk = 25 + min(deviation * 75, 75)  # 25-100
             severity = "significantly " if deviation > 0.3 else ""
             return risk, f"{biomarker.name} is {severity}below normal range"
         else:
-            # Above normal
-            deviation = (value - high) / (high + 1e-6)
+            # Above normal - deviation relative to range width
+            deviation = (value - high) / range_width
             risk = 25 + min(deviation * 75, 75)  # 25-100
             severity = "significantly " if deviation > 0.3 else ""
             return risk, f"{biomarker.name} is {severity}above normal range"
@@ -565,11 +570,11 @@ class CompositeRiskCalculator:
             elif result.overall_risk.level == RiskLevel.HIGH and max_level != RiskLevel.CRITICAL:
                 max_level = RiskLevel.HIGH
         
-        # Apply critical override boost
+        # Apply critical override boost (escalate composite to match worst system)
         if max_level == RiskLevel.CRITICAL and composite_score < 75:
-            composite_score = 75.0  # Minimum HIGH risk when any system is CRITICAL
+            composite_score = 75.0  # Boost to CRITICAL threshold when any system is CRITICAL
         elif max_level == RiskLevel.HIGH and composite_score < 50:
-            composite_score = 50.0  # Minimum MODERATE risk when any system is HIGH
+            composite_score = 50.0  # Boost to HIGH threshold when any system is HIGH
         
         # Generate explanation
         level = RiskLevel.from_score(composite_score)
@@ -667,16 +672,17 @@ class CompositeRiskCalculator:
                 f"{', '.join(rejected_systems)}."
             )
         
-        # Apply average trust penalty from valid results
-        trust_penalties = [
-            1.0 - tr.trust_adjusted_confidence
+        # Apply trust adjustment using pre-adjusted confidences (avoid double-penalty)
+        trust_confidences = [
+            tr.trust_adjusted_confidence
             for tr in trusted_results.values()
             if not tr.was_rejected and tr.risk_result is not None
         ]
-        if trust_penalties:
-            avg_penalty = sum(trust_penalties) / len(trust_penalties)
+        if trust_confidences:
+            avg_trust = sum(trust_confidences) / len(trust_confidences)
+            # Scale composite confidence by average trust factor
             composite.confidence = float(np.clip(
-                composite.confidence * (1.0 - avg_penalty * 0.5),
+                composite.confidence * avg_trust,
                 0.1, 0.99
             ))
         
