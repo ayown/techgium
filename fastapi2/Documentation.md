@@ -338,5 +338,56 @@ Created `demo.py` - comprehensive end-to-end test of the entire pipeline.
 - ✅ Trust envelope calculation
 - ✅ Multi-modal sensor integration
 
+---
 
+## ESP32 Thermal Camera Integration (MLX90640) ✅
+
+### Overview
+The ESP32 NodeMCU reads thermal imaging data from the MLX90640 sensor and transmits processed biomarker data via USB serial to the bridge.py application.
+
+### Firmware JSON Output Format
+```json
+{
+    "timestamp": 12345,
+    "thermal": {
+        "fever": {"canthus_temp": 36.4, "neck_temp": 36.8, "fever_risk": 0},
+        "diabetes": {"canthus_temp": 36.4, "risk_flag": 0},
+        "cardiovascular": {"thermal_asymmetry": 0.3, "left_cheek_temp": 35.2, "right_cheek_temp": 34.9},
+        "inflammation": {"hot_pixel_pct": 3.2, "face_mean_temp": 35.0, "detected": 0},
+        "autonomic": {"stress_gradient": 1.2, "forehead_temp": 35.5, "nose_temp": 34.3, "stress_flag": 0},
+        "metadata": {"face_detected": 1, "valid_rois": 7}
+    }
+}
+```
+
+### Biomarker Distribution (Option 1 - Physiologically Appropriate)
+| Firmware Data | Target System | Biomarker Name | Clinical Significance |
+|---------------|---------------|----------------|----------------------|
+| `fever.neck_temp` | Skin | skin_temperature | Core body temp proxy |
+| `fever.canthus_temp` | Skin | skin_temperature_max | Fever detection |
+| `inflammation.hot_pixel_pct` | Skin | inflammation_index | Localized inflammation |
+| `cardiovascular.thermal_asymmetry` | Cardiovascular | thermal_asymmetry | Blood perfusion imbalance |
+| `diabetes.canthus_temp` | Renal | microcirculation_temp | Microvascular dysfunction |
+| `autonomic.stress_gradient` | CNS | thermal_stress_gradient | Sympathetic activation |
+
+### Data Flow
+```
+ESP32 + MLX90640 
+    → Serial USB (COM_B, 115200 baud)
+    → bridge.py (ESP32Reader)
+    → DataFusion (flattens to thermal_data)
+    → Extractors (Skin, CV, CNS, Renal)
+    → API /api/v1/screening
+```
+
+### Quality Checks
+- `metadata.face_detected == 1` required
+- `valid_rois >= 5` for reliable data
+- Frames with low visibility automatically skipped
+
+### Execution Log
+- **2026-02-07**: Integrated ESP32 thermal firmware v2
+- Added JSON parsing in ESP32Reader (bridge.py)
+- Distributed biomarkers to appropriate physiological systems
+- Added backward compatibility for old esp32_data format
 

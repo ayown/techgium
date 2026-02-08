@@ -65,7 +65,13 @@ class SkinExtractor(BaseExtractor):
         
         # Priority 1: Hardware Thermal Data (ESP32/MLX90640)
         has_thermal = False
-        if "esp32_data" in data:
+        
+        # NEW FORMAT: Flattened thermal_data from bridge.py
+        if "thermal_data" in data:
+            self._extract_from_thermal_v2(data["thermal_data"], biomarker_set)
+            has_thermal = True
+        # OLD FORMAT: Nested esp32_data
+        elif "esp32_data" in data:
             self._extract_from_thermal(data["esp32_data"], biomarker_set)
             has_thermal = True
         elif "systems" in data:
@@ -290,7 +296,7 @@ class SkinExtractor(BaseExtractor):
                            0.5, (0, 5), "Simulated lesion count")
 
     def _extract_from_thermal(self, thermal_data: Dict[str, Any], biomarker_set: BiomarkerSet) -> None:
-        """Extract skin metrics from thermal sensor data."""
+        """Extract skin metrics from thermal sensor data (OLD FORMAT)."""
         data = thermal_data.get("thermal", {})
         
         if "skin_temp_avg" in data:
@@ -324,6 +330,57 @@ class SkinExtractor(BaseExtractor):
                 confidence=0.85,
                 normal_range=(0.0, 0.5),
                 description="Thermal asymmetry (Left vs Right)"
+            )
+
+    def _extract_from_thermal_v2(self, thermal_data: Dict[str, Any], biomarker_set: BiomarkerSet) -> None:
+        """Extract skin metrics from flattened thermal data (NEW FORMAT v2)."""
+        
+        # Skin Temperature from neck (core body proxy)
+        if thermal_data.get('fever_neck_temp') is not None:
+            self._add_biomarker_safe(
+                biomarker_set,
+                name="skin_temperature",
+                value=float(thermal_data['fever_neck_temp']),
+                unit="celsius",
+                confidence=0.90,
+                normal_range=(35.5, 37.5),
+                description="Neck temperature (MLX90640 fever screening)"
+            )
+        
+        # Max Temperature from inner canthus (most accurate core temp proxy)
+        if thermal_data.get('fever_canthus_temp') is not None:
+            self._add_biomarker_safe(
+                biomarker_set,
+                name="skin_temperature_max",
+                value=float(thermal_data['fever_canthus_temp']),
+                unit="celsius",
+                confidence=0.92,
+                normal_range=(36.0, 38.0),
+                description="Inner canthus temperature (core temp proxy)"
+            )
+        
+        # Inflammation Index from hot pixel percentage
+        if thermal_data.get('inflammation_pct') is not None:
+            self._add_biomarker_safe(
+                biomarker_set,
+                name="inflammation_index",
+                value=float(thermal_data['inflammation_pct']),
+                unit="percent",
+                confidence=0.75,
+                normal_range=(0.0, 5.0),
+                description="Localized inflammation (hot pixel %, MLX90640)"
+            )
+        
+        # Face mean temperature for context
+        if thermal_data.get('face_mean_temp') is not None:
+            self._add_biomarker_safe(
+                biomarker_set,
+                name="face_mean_temperature",
+                value=float(thermal_data['face_mean_temp']),
+                unit="celsius",
+                confidence=0.85,
+                normal_range=(34.0, 37.0),
+                description="Average face temperature (MLX90640)"
             )
 
     def _add_biomarker_safe(

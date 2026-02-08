@@ -423,10 +423,48 @@ class CardiovascularExtractor(BaseExtractor):
         if not any("heart_rate" in bm.name for bm in biomarker_set.biomarkers):
             self._generate_simulated_biomarkers(biomarker_set)
         
+        # NEW: Extract thermal asymmetry from thermal camera (ESP32)
+        if "thermal_data" in data:
+            self._extract_from_thermal(data["thermal_data"], biomarker_set)
+        
         biomarker_set.extraction_time_ms = (time.time() - start_time) * 1000
         self._extraction_count += 1
         
         return biomarker_set
+    
+    def _extract_from_thermal(
+        self,
+        thermal_data: Dict[str, Any],
+        biomarker_set: BiomarkerSet
+    ) -> None:
+        """Extract cardiovascular biomarkers from thermal camera data."""
+        
+        # Thermal Asymmetry - indicates blood perfusion imbalance (CVD risk)
+        if thermal_data.get('thermal_asymmetry') is not None:
+            self._add_biomarker(
+                biomarker_set,
+                name="thermal_asymmetry",
+                value=float(thermal_data['thermal_asymmetry']),
+                unit="delta_celsius",
+                confidence=0.85,
+                normal_range=(0.0, 0.5),
+                description="Left-right facial thermal asymmetry (perfusion indicator)"
+            )
+        
+        # Cheek temperatures for context
+        left_cheek = thermal_data.get('left_cheek_temp')
+        right_cheek = thermal_data.get('right_cheek_temp')
+        if left_cheek is not None and right_cheek is not None:
+            avg_cheek_temp = (left_cheek + right_cheek) / 2
+            self._add_biomarker(
+                biomarker_set,
+                name="facial_perfusion_temp",
+                value=float(avg_cheek_temp),
+                unit="celsius",
+                confidence=0.80,
+                normal_range=(33.0, 36.0),
+                description="Average cheek temperature (peripheral perfusion)"
+            )
     
     def _extract_from_vitals(
         self,

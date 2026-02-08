@@ -29,6 +29,7 @@ class RenalExtractor(BaseExtractor):
         
         Expected data keys:
         - ris_data: RIS bioimpedance array (samples x channels)
+        - thermal_data: Dict with microcirculation indicators from ESP32
         """
         import time
         start_time = time.time()
@@ -42,10 +43,47 @@ class RenalExtractor(BaseExtractor):
         else:
             self._generate_simulated_biomarkers(biomarker_set)
         
+        # NEW: Extract microcirculation from thermal camera (diabetes screening)
+        if "thermal_data" in data:
+            self._extract_from_thermal(data["thermal_data"], biomarker_set)
+        
         biomarker_set.extraction_time_ms = (time.time() - start_time) * 1000
         self._extraction_count += 1
         
         return biomarker_set
+    
+    def _extract_from_thermal(
+        self,
+        thermal_data: Dict[str, Any],
+        biomarker_set: BiomarkerSet
+    ) -> None:
+        """Extract renal/metabolic biomarkers from thermal camera data."""
+        
+        # Microcirculation Temperature for Diabetes Screening
+        # Cold canthus (inner eye corner) can indicate microvascular dysfunction
+        if thermal_data.get('diabetes_canthus_temp') is not None:
+            canthus_temp = float(thermal_data['diabetes_canthus_temp'])
+            self._add_biomarker(
+                biomarker_set,
+                name="microcirculation_temp",
+                value=canthus_temp,
+                unit="celsius",
+                confidence=0.75,
+                normal_range=(35.5, 37.0),
+                description="Inner canthus temperature (microcirculation proxy)"
+            )
+            
+            # Diabetes risk flag from firmware
+            if thermal_data.get('diabetes_risk_flag'):
+                self._add_biomarker(
+                    biomarker_set,
+                    name="cold_extremity_flag",
+                    value=1.0,
+                    unit="flag",
+                    confidence=0.70,
+                    normal_range=(0.0, 0.0),
+                    description="Cold extremity detected (peripheral microcirculation issue)"
+                )
     
     def _extract_from_ris(
         self,

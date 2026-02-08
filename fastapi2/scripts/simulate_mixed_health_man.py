@@ -54,8 +54,10 @@ def simulate_mixed_health_screening():
     # Fever
     print("  - Generating Skin data (Fever - Unhealthy)...")
     skin_biomarkers = [
-        create_biomarker("surface_temperature_avg", 38.5, "C", [36.1, 37.2]), # Fever
-        create_biomarker("thermal_asymmetry", 0.1, "C", [0.0, 0.5])           # Normal asymmetry
+        create_biomarker("skin_temperature", 38.5, "C", [35.0, 38.0]),     # Fever
+        create_biomarker("skin_temperature_max", 39.0, "C", [36.0, 38.5]), # High max
+        create_biomarker("inflammation_index", 20.0, "%", [0.0, 15.0]),    # High inflammation
+        create_biomarker("thermal_asymmetry", 0.2, "C", [0.0, 0.5]),       # Normal asymmetry
     ]
     systems_data.append({
         "system": "skin",
@@ -63,12 +65,13 @@ def simulate_mixed_health_screening():
     })
 
     # 4. CNS (UNHEALTHY)
-    # Tremor + Gait issues
-    print("  - Generating CNS data (Tremor/Gait - Unhealthy)...")
+    # Tremor + Gait issues + Stress
+    print("  - Generating CNS data (Tremor/Gait/Stress - Unhealthy)...")
     cns_biomarkers = [
         create_biomarker("gait_variability", 0.07, "score", [0.0, 0.05]),     # Moderate variability
         create_biomarker("cns_stability_score", 60.0, "score", [80.0, 100.0]), # Low stability
-        create_biomarker("tremor_resting", 0.09, "amp", [0.0, 0.02])           # Significant tremor
+        create_biomarker("tremor_resting", 0.09, "amp", [0.0, 0.02]),         # Significant tremor
+        create_biomarker("thermal_stress_gradient", 4.0, "C", [0.0, 3.0]),    # High stress
     ]
     systems_data.append({
         "system": "cns",
