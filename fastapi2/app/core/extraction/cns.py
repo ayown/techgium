@@ -214,7 +214,45 @@ class CNSExtractor(BaseExtractor):
             f"{len(heel_strikes)} heel strikes detected"
         )
         
+        # NEW: Extract thermal stress gradient from ESP32 (autonomic stress marker)
+        if "thermal_data" in data:
+            self._extract_from_thermal(data["thermal_data"], biomarker_set)
+        
         return biomarker_set
+    
+    def _extract_from_thermal(
+        self,
+        thermal_data: Dict[str, Any],
+        biomarker_set: BiomarkerSet
+    ) -> None:
+        """Extract CNS/autonomic biomarkers from thermal camera data."""
+        
+        # Stress Gradient - forehead to nose temperature difference
+        # Higher gradient indicates sympathetic activation (stress response)
+        if thermal_data.get('stress_gradient') is not None:
+            self._add_biomarker(
+                biomarker_set,
+                name="thermal_stress_gradient",
+                value=float(thermal_data['stress_gradient']),
+                unit="delta_celsius",
+                confidence=0.80,
+                normal_range=(0.0, 1.5),
+                description="Forehead-nose thermal gradient (autonomic stress indicator)"
+            )
+        
+        # Individual temps for context
+        forehead = thermal_data.get('forehead_temp')
+        nose = thermal_data.get('nose_temp')
+        if forehead is not None:
+            self._add_biomarker(
+                biomarker_set,
+                name="forehead_temperature",
+                value=float(forehead),
+                unit="celsius",
+                confidence=0.85,
+                normal_range=(33.0, 36.0),
+                description="Forehead temperature (MLX90640)"
+            )
     
     # =========================================================================
     # SIGNAL PREPROCESSING (Essential for clinical-grade analysis)

@@ -109,6 +109,16 @@ class BiomarkerPlausibilityValidator:
             "skin_temp_max": {"hard": (25.0, 50.0), "physiological": (32.0, 42.0)},
             "thermal_asymmetry": {"hard": (0.0, 10.0), "physiological": (0.0, 2.0)},
             
+            # Thermal biomarkers (ESP32 thermal bridge v2)
+            "skin_temperature": {"hard": (30.0, 45.0), "physiological": (35.0, 38.5)},
+            "skin_temperature_max": {"hard": (32.0, 50.0), "physiological": (36.0, 42.0)},
+            "inflammation_index": {"hard": (0.0, 100.0), "physiological": (0.0, 15.0)},
+            "face_mean_temperature": {"hard": (28.0, 42.0), "physiological": (33.0, 37.0)},
+            "facial_perfusion_temp": {"hard": (28.0, 42.0), "physiological": (32.0, 37.0)},
+            "microcirculation_temp": {"hard": (30.0, 42.0), "physiological": (34.0, 38.0)},
+            "thermal_stress_gradient": {"hard": (-5.0, 10.0), "physiological": (0.0, 3.0)},
+            "forehead_temperature": {"hard": (28.0, 42.0), "physiological": (33.0, 37.5)},
+            
             # Renal
             "fluid_asymmetry_index": {"hard": (0.0, 1.0), "physiological": (0.0, 0.5)},
             "total_body_water_proxy": {"hard": (0.0, 5.0), "physiological": (0.3, 2.0)},
@@ -340,7 +350,10 @@ class BiomarkerPlausibilityValidator:
         for name, max_rate in max_rates.items():
             if name in current_map and name in previous_map:
                 delta = abs(current_map[name] - previous_map[name])
-                rate = delta / max(time_delta, 1.0) # Avoid small delta explosion
+                # Fix: Use small epsilon for time_delta to avoid division by zero, 
+                # but don't force min 1.0s which under-reports rate for fast updates
+                effective_time = max(time_delta, 0.001) 
+                rate = delta / effective_time
                 
                 if rate > max_rate:
                     violations.append(PlausibilityViolation(
@@ -377,9 +390,9 @@ class BiomarkerPlausibilityValidator:
             hr = bm_map["heart_rate"]
             hrv = bm_map["hrv_rmssd"]
             # Physiological empirical limit: HRV shouldn't be massive during Tachycardia
-            # Fix: if hr > 140 and hrv > 50 and hr * 0.4 > hrv
+            # Fix: Flag if HR > 140 and HRV is suspiciously high (>80ms)
             
-            if hr > 140 and hrv > 50 and (0.4 * hr) > hrv: 
+            if hr > 140 and hrv > 80: 
                 violations.append(PlausibilityViolation(
                     biomarker_name="heart_rate,hrv_rmssd",
                     violation_type=ViolationType.INTERNAL_CONTRADICTION,

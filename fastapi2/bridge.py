@@ -68,6 +68,14 @@ from dataclasses import dataclass, field
 import logging
 import argparse
 
+import sys
+import os
+
+# Ensure project root is in path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
 import numpy as np
 import cv2
 import requests
@@ -78,6 +86,7 @@ from app.core.extraction.cns import CNSExtractor
 from app.core.extraction.skeletal import SkeletalExtractor
 from app.core.extraction.skin import SkinExtractor
 from app.core.extraction.pulmonary import PulmonaryExtractor
+from app.core.extraction.renal import RenalExtractor
 from app.core.extraction.base import BiomarkerSet
 
 # Optional serial import (may not be available on all systems)
@@ -136,6 +145,11 @@ class BridgeConfig:
 # BASE SERIAL READER
 # ==============================================================================
 
+
+# ==============================================================================
+# BASE SERIAL READER
+# ==============================================================================
+
 class BaseSerialReader:
     """Base class for serial port readers."""
     
@@ -174,7 +188,100 @@ class BaseSerialReader:
             logger.info(f"Disconnected from {self.name}")
     
     def read_loop(self):
-        """Background thread to read serial data (Binary)."""
+        """Background thread to read serial data. Must be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement read_loop")
+
+    def start_reading(self):
+        """Start background reading thread."""
+        thread = threading.Thread(target=self.read_loop, daemon=True)
+        thread.start()
+        return thread
+    
+    def get_latest_data(self) -> Optional[Dict[str, Any]]:
+        """Get most recent sensor data."""
+        return self.last_data if self.last_data else None
+
+
+# ==============================================================================
+# ESP32 SERIAL READER (Thermal Data)
+# ==============================================================================
+
+class ESP32Reader(BaseSerialReader):
+    """Reads thermal biomarker data from ESP32 NodeMCU via serial port."""
+    
+    def __init__(self, port: str, baud: int = 115200):
+        super().__init__(port, baud, name="ESP32 NodeMCU (Thermal MLX90640)")
+    
+    def read_loop(self):
+        """Background thread to read JSON thermal data from ESP32."""
+        self.running = True
+        
+        while self.running and self.serial_conn and self.serial_conn.is_open:
+            try:
+                line = self.serial_conn.readline().decode('utf-8', errors='ignore').strip()
+                
+                if not line or not line.startswith('{'):
+                    continue
+                
+                try:
+                    data = json.loads(line)
+                    
+                    # Skip error messages from ESP32
+                    if 'error' in data:
+                        logger.warning(f"ESP32 thermal error: {data.get('error')}")
+                        continue
+                    
+                    # Validate required structure
+                    if 'thermal' not in data:
+                        continue
+                    
+                    thermal = data['thermal']
+                    
+                    # Validate metadata (face detection quality check)
+                    if 'metadata' in thermal:
+                        if thermal['metadata'].get('face_detected', 0) == 0:
+                            logger.debug("Face not detected in thermal frame")
+                            # We might still want to capture data if we are debugging, 
+                            # but for strict screening we might skip. 
+                            # For now, let's allow it but log it.
+                            # continue 
+                            pass
+                        
+                        valid_rois = thermal['metadata'].get('valid_rois', 0)
+                        if valid_rois < 5:  # Need at least 5 ROIs for reliable data
+                            logger.debug(f"Low quality frame: only {valid_rois} valid ROIs")
+                            continue
+                    
+                    # Store complete data
+                    data['received_at'] = time.time()
+                    self.last_data = data
+                    
+                    # Queue management
+                    if self.data_queue.full():
+                        self.data_queue.get()
+                    self.data_queue.put(data)
+                    
+                except json.JSONDecodeError as e:
+                    logger.debug(f"ESP32 JSON parse error: {e}")
+                    continue
+                    
+            except Exception as e:
+                logger.error(f"ESP32 read error: {e}")
+                time.sleep(0.1)
+
+
+# ==============================================================================
+# RADAR SERIAL READER (Seeed MR60BHA2)
+# ==============================================================================
+
+class RadarReader(BaseSerialReader):
+    """Reads breathing and heartbeat data from Seeed MR60BHA2 Radar Kit."""
+    
+    def __init__(self, port: str, baud: int = 115200):
+        super().__init__(port, baud, name="Seeed Radar Kit (MR60BHA2)")
+    
+    def read_loop(self):
+        """Background thread to read serial data (Binary) from Radar."""
         self.running = True
         buffer = b""
         
@@ -203,8 +310,7 @@ class BaseSerialReader:
                              # Remove processed frame
                              buffer = buffer[12:]
                         else:
-                            # Slide window (this is inefficient but simple for now)
-                            # Better: find index of next 0x02
+                            # Slide window
                             buffer = buffer[1:]
                 else:
                     time.sleep(0.01)
@@ -218,14 +324,12 @@ class BaseSerialReader:
         if len(raw_bytes) < 12:
             return None
         
-        # Header check already done in loop, but good for sanity
+        # Header check
         if raw_bytes[0] != 0x02 or raw_bytes[1] != 0x81:
             return None
             
         try:
-            # Protocol: Header(2) + Reserved(2) + Resp(4) + Heart(4) ... assume simple packing
-            # Note: User provided 'f' (float) unpacking at offsets 4 and 8
-            # This implies the frame structure matches exactly what was requested.
+            # Protocol: Header(2) + Reserved(2) + Resp(4) + Heart(4)
             resp_rate = struct.unpack('f', raw_bytes[4:8])[0]
             heart_rate = struct.unpack('f', raw_bytes[8:12])[0]
             
@@ -243,94 +347,6 @@ class BaseSerialReader:
                 }
             }
         except struct.error:
-            return None
-
-    def parse_data(self, line: str) -> Optional[Dict[str, Any]]:
-        """Legacy JSON parser (kept for reference or alternate modes)."""
-        return None
-    
-    def start_reading(self):
-        """Start background reading thread."""
-        thread = threading.Thread(target=self.read_loop, daemon=True)
-        thread.start()
-        return thread
-    
-    def get_latest_data(self) -> Optional[Dict[str, Any]]:
-        """Get most recent sensor data."""
-        return self.last_data if self.last_data else None
-
-
-# ==============================================================================
-# ESP32 SERIAL READER (Thermal Data)
-# ==============================================================================
-
-class ESP32Reader(BaseSerialReader):
-    """Reads thermal sensor data from ESP32 NodeMCU via serial port.
-    
-    Expected JSON format from ESP32:
-    {
-        "timestamp": 1707050232,
-        "thermal": {
-            "skin_temp_avg": 36.4,
-            "skin_temp_max": 37.1,
-            "thermal_asymmetry": 0.3,
-            "thermal_map": [[36.1, 36.2, ...], ...]
-        }
-    }
-    """
-    
-    def __init__(self, port: str, baud: int = 115200):
-        super().__init__(port, baud, name="ESP32 NodeMCU (Thermal)")
-
-
-# ==============================================================================
-# RADAR SERIAL READER (Seeed MR60BHA2)
-# ==============================================================================
-
-class RadarReader(BaseSerialReader):
-    """Reads breathing and heartbeat data from Seeed MR60BHA2 Radar Kit.
-    
-    Expected JSON format from Seeed Radar Kit:
-    {
-        "timestamp": 1707050232,
-        "radar": {
-            "respiration_rate": 15.2,
-            "heart_rate": 72,
-            "breathing_depth": 0.73,
-            "presence_detected": true
-        }
-    }
-    
-    Note: The actual Seeed MR60BHA2 output format may differ.
-    Refer to: https://wiki.seeedstudio.com/mmwave_kit/
-    """
-    
-    def __init__(self, port: str, baud: int = 115200):
-        super().__init__(port, baud, name="Seeed Radar Kit (MR60BHA2)")
-    
-    def parse_data(self, line: str) -> Optional[Dict[str, Any]]:
-        """Parse radar data. May need adjustment for actual Seeed protocol."""
-        try:
-            data = json.loads(line)
-            
-            # Normalize to expected format if needed
-            if "radar" not in data and any(k in data for k in ["respiration_rate", "heart_rate", "breathing_depth"]):
-                # Wrap flat data into radar object
-                data = {
-                    "timestamp": data.get("timestamp", int(time.time())),
-                    "radar": {
-                        "respiration_rate": data.get("respiration_rate"),
-                        "heart_rate": data.get("heart_rate"),
-                        "breathing_depth": data.get("breathing_depth"),
-                        "presence_detected": data.get("presence_detected", True)
-                    }
-                }
-            
-            return data
-            
-        except json.JSONDecodeError:
-            # TODO: Handle binary/proprietary Seeed protocol if needed
-            logger.debug(f"Non-JSON data from radar: {line[:50]}...")
             return None
 
 
@@ -524,6 +540,7 @@ class DataFusion:
         self.skeletal_extractor = SkeletalExtractor()
         self.skin_extractor = SkinExtractor()
         self.pulmonary_extractor = PulmonaryExtractor()
+        self.renal_extractor = RenalExtractor()
         logger.info("Core Extractors initialized in DataFusion")
         
     def _transform_biomarker_set(self, bm_set: BiomarkerSet) -> Dict[str, Any]:
@@ -554,8 +571,32 @@ class DataFusion:
         
         if radar_data:
             raw_data_context["radar_data"] = radar_data
-        if esp32_data:
-            raw_data_context["esp32_data"] = esp32_data
+        
+        # Flatten ESP32 thermal data for distribution to multiple extractors
+        if esp32_data and 'thermal' in esp32_data:
+            thermal = esp32_data['thermal']
+            raw_data_context['thermal_data'] = {
+                # For SkinExtractor
+                'fever_neck_temp': thermal.get('fever', {}).get('neck_temp'),
+                'fever_canthus_temp': thermal.get('fever', {}).get('canthus_temp'),
+                'inflammation_pct': thermal.get('inflammation', {}).get('hot_pixel_pct'),
+                'face_mean_temp': thermal.get('inflammation', {}).get('face_mean_temp'),
+                # For CardiovascularExtractor
+                'thermal_asymmetry': thermal.get('cardiovascular', {}).get('thermal_asymmetry'),
+                'left_cheek_temp': thermal.get('cardiovascular', {}).get('left_cheek_temp'),
+                'right_cheek_temp': thermal.get('cardiovascular', {}).get('right_cheek_temp'),
+                # For RenalExtractor (diabetes/microcirculation)
+                'diabetes_canthus_temp': thermal.get('diabetes', {}).get('canthus_temp'),
+                'diabetes_risk_flag': thermal.get('diabetes', {}).get('risk_flag', 0) == 1,
+                # For CNSExtractor (autonomic stress)
+                'stress_gradient': thermal.get('autonomic', {}).get('stress_gradient'),
+                'nose_temp': thermal.get('autonomic', {}).get('nose_temp'),
+                'forehead_temp': thermal.get('autonomic', {}).get('forehead_temp'),
+            }
+            raw_data_context['esp32_data'] = esp32_data  # Keep original too
+        elif esp32_data:
+            raw_data_context['esp32_data'] = esp32_data
+            
         if face_frames:
             raw_data_context["face_frames"] = face_frames
         if pose_sequence:
@@ -601,6 +642,14 @@ class DataFusion:
                 systems.append(self._transform_biomarker_set(skeletal_set))
         except Exception as e:
              logging.error(f"Skeletal extraction failed: {e}")
+
+        # 6. Renal (Thermal - Diabetes/Microcirculation)
+        try:
+            renal_set = self.renal_extractor.extract(raw_data_context)
+            if renal_set.biomarkers:
+                systems.append(self._transform_biomarker_set(renal_set))
+        except Exception as e:
+            logger.error(f"Renal extraction failed: {e}")
         
         return {
             "patient_id": patient_id,
@@ -715,6 +764,14 @@ class HardwareBridge:
             logger.info(f"\n📷 Phase 1: Face capture ({self.config.face_capture_seconds}s)")
             logger.info("Please look directly at the camera...")
             
+            # Clear sensor queues to sync with video start
+            if self.radar_reader:
+                with self.radar_reader.data_queue.mutex:
+                    self.radar_reader.data_queue.queue.clear()
+            if self.esp32_reader:
+                with self.esp32_reader.data_queue.mutex:
+                    self.esp32_reader.data_queue.queue.clear()
+            
             # Use on-the-fly extraction to save memory
             face_frames, count = self.camera.capture_and_process_frames(
                 duration_seconds=self.config.face_capture_seconds,
@@ -734,21 +791,67 @@ class HardwareBridge:
             )
             logger.info(f"Extracted {len(pose_sequence)} pose frames (from {count} raw)")
         
-        # Get Seeed Radar Kit data
-        if self.radar_reader:
-            radar_data = self.radar_reader.get_latest_data()
-            if radar_data:
-                logger.info(f"Radar data received: {list(radar_data.get('radar', {}).keys())}")
-            else:
-                logger.warning("No radar data received")
+        # ---------------------------------------------------------
+        # DATA AGGREGATION (Sync with video duration)
+        # ---------------------------------------------------------
         
-        # Get ESP32 thermal data
-        if self.esp32_reader:
-            esp32_data = self.esp32_reader.get_latest_data()
-            if esp32_data:
-                logger.info(f"Thermal data received: {list(esp32_data.get('thermal', {}).keys())}")
+        # Aggregate Radar Data
+        if self.radar_reader:
+            radar_items = []
+            while not self.radar_reader.data_queue.empty():
+                radar_items.append(self.radar_reader.data_queue.get())
+            
+            if radar_items:
+                # Calculate averages for physiological stability
+                avg_hr = int(sum(i['radar']['heart_rate'] for i in radar_items) / len(radar_items))
+                avg_resp = round(sum(i['radar']['respiration_rate'] for i in radar_items) / len(radar_items), 1)
+                
+                # Use the latest item as the base structure, but inject averages
+                radar_data = radar_items[-1]
+                radar_data['radar']['heart_rate'] = avg_hr
+                radar_data['radar']['respiration_rate'] = avg_resp
+                
+                logger.info(f"aggregated {len(radar_items)} radar samples. Avg HR: {avg_hr}, Avg Resp: {avg_resp}")
             else:
-                logger.warning("No thermal data received")
+                 # Fallback to last known if queue empty (unlikely with clear)
+                radar_data = self.radar_reader.get_latest_data()
+                logger.warning("No radar data collected during video - using last known")
+
+        # Aggregate ESP32 Thermal Data
+        if self.esp32_reader:
+            thermal_items = []
+            while not self.esp32_reader.data_queue.empty():
+                thermal_items.append(self.esp32_reader.data_queue.get())
+            
+            if thermal_items:
+                # Average key thermal metrics
+                # Note: Thermal structures are deep, so we focus on key physiological indicators
+                
+                # Helper to extract deep value safely
+                def get_val(item, category, field):
+                    return item.get('thermal', {}).get(category, {}).get(field, 0.0)
+
+                # 1. Average Neck Temp (Fever)
+                neck_temps = [get_val(i, 'fever', 'neck_temp') for i in thermal_items if get_val(i, 'fever', 'neck_temp') > 0]
+                avg_neck = sum(neck_temps)/len(neck_temps) if neck_temps else 0.0
+                
+                # 2. Average Stress (Autonomic)
+                stress_vals = [get_val(i, 'autonomic', 'stress_gradient') for i in thermal_items]
+                avg_stress = sum(stress_vals)/len(stress_vals) if stress_vals else 0.0
+
+                # Use latest as base
+                esp32_data = thermal_items[-1]
+                
+                # Inject averages
+                if 'fever' in esp32_data.get('thermal', {}):
+                    esp32_data['thermal']['fever']['neck_temp'] = round(avg_neck, 2)
+                if 'autonomic' in esp32_data.get('thermal', {}):
+                    esp32_data['thermal']['autonomic']['stress_gradient'] = round(avg_stress, 2)
+                    
+                logger.info(f"Aggregated {len(thermal_items)} thermal samples. Avg Neck: {avg_neck:.1f}, Avg Stress: {avg_stress:.1f}")
+            else:
+                esp32_data = self.esp32_reader.get_latest_data()
+                logger.warning("No thermal data collected during video - using last known")
         
         # Build and send screening request
         logger.info("\n📊 Processing biomarkers and sending to API...")

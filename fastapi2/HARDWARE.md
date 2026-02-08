@@ -294,14 +294,44 @@ The webcam connects directly to the USB hub. No wiring to any microcontroller.
 
 ### Data Format: ESP32 NodeMCU → bridge.py (COM_B)
 
+The ESP32 thermal bridge firmware outputs detailed clinical biomarkers at **8 fps**:
+
 ```json
 {
-  "timestamp": 1707050232,
+  "timestamp": 12345,
   "thermal": {
-    "skin_temp_avg": 36.4,
-    "skin_temp_max": 37.1,
-    "thermal_asymmetry": 0.3,
-    "thermal_map": [[36.1, 36.2, ...], ...]
+    "fever": {
+      "canthus_temp": 36.42,
+      "neck_temp": 36.85,
+      "neck_stability": 0.45,
+      "fever_risk": 0
+    },
+    "diabetes": {
+      "canthus_temp": 36.42,
+      "canthus_stability": 0.32,
+      "risk_flag": 0
+    },
+    "cardiovascular": {
+      "thermal_asymmetry": 0.285,
+      "left_cheek_temp": 35.92,
+      "right_cheek_temp": 36.21,
+      "risk_flag": 0
+    },
+    "inflammation": {
+      "hot_pixel_pct": 3.25,
+      "face_mean_temp": 35.78,
+      "detected": 0
+    },
+    "autonomic": {
+      "nose_temp": 34.52,
+      "forehead_temp": 35.85,
+      "stress_gradient": 1.33,
+      "stress_flag": 0
+    },
+    "metadata": {
+      "face_detected": 1,
+      "valid_rois": 7
+    }
   }
 }
 ```
