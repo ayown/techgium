@@ -128,10 +128,9 @@ _doctor_report_gen = DoctorReportGenerator(output_dir="reports")
 _risk_engine = RiskEngine()
 _consensus = AgentConsensus()
 
-# ---- Medical Validation Agents ----
-from app.core.agents.medical_agents import MedGemmaAgent, OpenBioLLMAgent
-_med_gemma_agent = MedGemmaAgent()
-_open_biollm_agent = OpenBioLLMAgent()
+# ---- Multi-LLM Interpreter (Gemini + GPT-OSS + II-Medical) ----
+from app.core.llm.multi_llm_interpreter import MultiLLMInterpreter
+_multi_llm_interpreter = MultiLLMInterpreter()
 
 
 
@@ -311,38 +310,19 @@ async def run_screening(request: ScreeningRequest):
         requires_review = False
         
         if request.include_validation and system_results:
-            # Real AI validation using medical agents
-            agent_results = {}
-            
-            # 1. MedGemma: Validate biomarker plausibility for each system
-            for system, result in system_results.items():
-                try:
-                    med_validation = _med_gemma_agent.validate_biomarkers(
-                        biomarker_summary=result.biomarker_summary,
-                        system=system
-                    )
-                    agent_results[f"MedGemma_{system.value}"] = med_validation
-                    logger.info(f"MedGemma validation for {system.value}: {med_validation.status.value}")
-                except Exception as e:
-                    logger.warning(f"MedGemma validation failed for {system.value}: {e}")
-            
-            # 2. OpenBioLLM: Cross-system consistency check
+            # Use MultiLLMInterpreter for validation (Gemini + GPT-OSS + II-Medical pipeline)
+            # Smart cutoffs: MODERATE risk = single Gemini, LOW/HIGH = full 3-LLM pipeline
             try:
-                consistency_validation = _open_biollm_agent.validate_consistency(
+                interpretation = _multi_llm_interpreter.interpret_composite_risk(
                     system_results=system_results,
+                    composite_risk=composite,
                     trust_envelope=None
                 )
-                agent_results["OpenBioLLM_consistency"] = consistency_validation
-                logger.info(f"OpenBioLLM consistency check: {consistency_validation.status.value}")
+                validation_status = "validated" if interpretation.validation_passed else "needs_review"
+                requires_review = not interpretation.validation_passed or len(rejected_systems) > 0
+                logger.info(f"MultiLLM validation: mode={interpretation.pipeline_mode}, passed={interpretation.validation_passed}")
             except Exception as e:
-                logger.warning(f"OpenBioLLM consistency check failed: {e}")
-            
-            # 3. Compute consensus from all agent results
-            if agent_results:
-                consensus_result = _consensus.compute_consensus(agent_results)
-                validation_status = consensus_result.overall_status.value
-                requires_review = consensus_result.requires_human_review or len(rejected_systems) > 0
-            else:
+                logger.warning(f"MultiLLM validation failed: {e}")
                 validation_status = "plausible" if not rejected_systems else "partial"
                 requires_review = len(rejected_systems) > 0
         
