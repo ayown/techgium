@@ -687,6 +687,99 @@ Format as a single paragraph with line breaks (<br/>) between sections. Keep it 
         # Fallback to hardcoded explanation
         return self._get_biomarker_explanation(biomarker_name, value, status)
     
+    def _generate_batched_ai_explanations(self, system_name: str, biomarkers: Dict) -> Dict[str, str]:
+        """
+        Generate AI explanations for ALL biomarkers in one system with a SINGLE API call.
+        
+        This reduces API calls from N (one per biomarker) to 1 (one per system).
+        Falls back to hardcoded explanations if AI unavailable.
+        
+        Args:
+            system_name: Name of the body system (e.g., "Cardiovascular")
+            biomarkers: Dict of biomarker data with 'value', 'status', 'unit' keys
+            
+        Returns:
+            Dict mapping biomarker names to their explanations
+        """
+        explanations = {}
+        
+        # Filter to only abnormal biomarkers (normal ones get simple fallback)
+        abnormal_biomarkers = {}
+        for bm_name, bm_data in biomarkers.items():
+            status = bm_data.get('status', 'not_assessed')
+            if status == 'normal':
+                # Use simple fallback for normal biomarkers - no AI needed
+                explanations[bm_name] = self._get_biomarker_explanation(bm_name, bm_data.get('value', 0), status)
+            elif status != 'not_assessed':
+                abnormal_biomarkers[bm_name] = bm_data
+        
+        # If no abnormal biomarkers or AI unavailable, return what we have
+        if not abnormal_biomarkers or not self.gemini_client or not self.gemini_client.is_available:
+            for bm_name, bm_data in abnormal_biomarkers.items():
+                explanations[bm_name] = self._get_biomarker_explanation(
+                    bm_name, bm_data.get('value', 0), bm_data.get('status', 'unknown')
+                )
+            return explanations
+        
+        # Build single batched prompt for all abnormal biomarkers
+        try:
+            biomarker_list = []
+            for i, (bm_name, bm_data) in enumerate(abnormal_biomarkers.items(), 1):
+                friendly_name = self._simplify_biomarker_name(bm_name)
+                biomarker_list.append(
+                    f"{i}. {friendly_name}: {bm_data.get('value', 0)} {bm_data.get('unit', '')} ({bm_data.get('status', 'unknown')})"
+                )
+            
+            prompt = f"""You are explaining {system_name} health screening results to a patient.
+
+The following biomarkers need explanation:
+{chr(10).join(biomarker_list)}
+
+For EACH biomarker, provide a brief 2-3 sentence explanation covering:
+- What it means for their health
+- Simple advice or next steps
+
+Format your response as a JSON object where keys are the biomarker names and values are the explanations.
+Example: {{"Heart Rate": "Your heart rate is elevated...", "Blood Pressure": "Your blood pressure..."}}
+
+Keep explanations encouraging but realistic. Avoid medical jargon."""
+
+            response = self.gemini_client.generate(
+                prompt=prompt,
+                system_instruction="You are a helpful health assistant. Respond with valid JSON only."
+            )
+            
+            if response and response.text and not response.is_mock:
+                import json
+                try:
+                    # Parse JSON response
+                    ai_explanations = json.loads(response.text.strip())
+                    
+                    # Map AI explanations back to original biomarker names
+                    for bm_name, bm_data in abnormal_biomarkers.items():
+                        friendly_name = self._simplify_biomarker_name(bm_name)
+                        if friendly_name in ai_explanations:
+                            explanations[bm_name] = ai_explanations[friendly_name]
+                        else:
+                            # Fallback if not found in response
+                            explanations[bm_name] = self._get_biomarker_explanation(
+                                bm_name, bm_data.get('value', 0), bm_data.get('status', 'unknown')
+                            )
+                    return explanations
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse batched AI response for {system_name}")
+                    
+        except Exception as e:
+            logger.warning(f"Batched AI explanation failed for {system_name}: {e}")
+        
+        # Fallback: Use hardcoded explanations for all abnormal biomarkers
+        for bm_name, bm_data in abnormal_biomarkers.items():
+            explanations[bm_name] = self._get_biomarker_explanation(
+                bm_name, bm_data.get('value', 0), bm_data.get('status', 'unknown')
+            )
+        
+        return explanations
+    
     def _generate_pdf(
         self,
         report: PatientReport,
@@ -862,15 +955,16 @@ Format as a single paragraph with line breaks (<br/>) between sections. Keep it 
                 ))
                 story.append(Spacer(1, 6))
                 
+                # BATCHED AI: Generate all explanations for this system in ONE API call
+                batched_explanations = self._generate_batched_ai_explanations(system_name, biomarkers)
+                
                 for bm_name, bm_data in biomarkers.items():
                     status = bm_data.get('status', 'not_assessed')
                     if status != 'not_assessed':
-                        # Use AI-generated explanation with fallback
-                        explanation = self._generate_ai_explanation(
+                        # Use pre-computed batched explanation
+                        explanation = batched_explanations.get(
                             bm_name, 
-                            bm_data['value'], 
-                            status,
-                            bm_data.get('unit', '')
+                            self._get_biomarker_explanation(bm_name, bm_data['value'], status)
                         )
                         friendly_name = self._simplify_biomarker_name(bm_name)
                         story.append(Paragraph(

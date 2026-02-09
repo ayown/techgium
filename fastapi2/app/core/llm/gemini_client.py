@@ -27,8 +27,11 @@ except ImportError:
 
 class GeminiModel(str, Enum):
     """Available Gemini models."""
-    FLASH_2_0_LITE = "gemini-2.0-flash-lite"  # Free tier friendly
-    FLASH_2_0 = "gemini-2.0-flash"  # May have quota limits
+    FLASH_LATEST = "gemini-2.5-flash"  # Latest Flash model
+    FLASH_8B = "gemini-1.5-flash-8b"  # Cheapest & Fastest (Keep if available, else update)
+    FLASH_1_5 = "gemini-2.0-flash"  # Fallback to 2.0
+    FLASH_2_0 = "gemini-2.0-flash"  # New Flash model
+    FLASH_2_0_LITE = "gemini-2.0-flash-lite"  # Experimental
     PRO_1_5 = "gemini-1.5-pro"  # Legacy
 
 
@@ -36,8 +39,8 @@ class GeminiModel(str, Enum):
 class GeminiConfig:
     """Configuration for Gemini client."""
     api_key: Optional[str] = None
-    model: GeminiModel = GeminiModel.FLASH_2_0_LITE
-    temperature: float = 1.0  # Gemini 2.5+ defaults to 1.0
+    model: GeminiModel = GeminiModel.FLASH_LATEST
+    temperature: float = 0.7  # Gemini 1.5 defaults
     max_output_tokens: int = 2048
     top_p: float = 0.8
     top_k: int = 40
