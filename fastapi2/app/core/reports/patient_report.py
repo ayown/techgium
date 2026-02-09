@@ -73,9 +73,9 @@ RISK_TEXT_COLORS = {
 }
 
 STATUS_COLORS = {
-    "normal": HexColor("#ECFDF5") if REPORTLAB_AVAILABLE else "#ECFDF5",      # Mint
-    "low": HexColor("#EFF6FF") if REPORTLAB_AVAILABLE else "#EFF6FF",         # Pale Blue
-    "high": HexColor("#FFFBEB") if REPORTLAB_AVAILABLE else "#FFFBEB",        # Pale Amber
+    "normal": HexColor("#ECFDF5") if REPORTLAB_AVAILABLE else "#ECFDF5",      # Mint (Good)
+    "low": HexColor("#FFECD2") if REPORTLAB_AVAILABLE else "#FFECD2",         # Pastel Orange-Yellow (Abnormal)
+    "high": HexColor("#FFECD2") if REPORTLAB_AVAILABLE else "#FFECD2",        # Pastel Orange-Yellow (Abnormal)
     "not_assessed": HexColor("#F9FAFB") if REPORTLAB_AVAILABLE else "#F9FAFB" # Light Gray
 }
 
@@ -104,6 +104,17 @@ BIOMARKER_NAMES = {
     "reaction_time": "Reaction Time",
     "glucose": "Blood Sugar Estimate",
     "cholesterol": "Lipid Profile Estimate",
+    # Thermal biomarkers (ESP32 thermal camera)
+    "skin_temperature": "Body Temperature",
+    "skin_temperature_max": "Peak Skin Temperature",
+    "inflammation_index": "Inflammation Level",
+    "face_mean_temperature": "Facial Temperature",
+    "thermal_asymmetry": "Facial Thermal Balance",
+    "facial_perfusion_temp": "Facial Blood Flow",
+    "microcirculation_temp": "Microcirculation",
+    "thermal_stress_gradient": "Stress Response",
+    "forehead_temperature": "Forehead Temperature",
+    "cold_extremity_flag": "Cold Extremity Indicator",
 }
 
 
@@ -519,10 +530,10 @@ class EnhancedPatientReportGenerator:
     def _get_simple_status(self, level: RiskLevel) -> str:
         """Convert risk level to simple patient-friendly status."""
         statuses = {
-            RiskLevel.LOW: "✓ Good",
-            RiskLevel.MODERATE: "⚠ Attention Recommended",
-            RiskLevel.HIGH: "⚠ Consult Doctor",
-            RiskLevel.CRITICAL: "🚨 Urgent Care Needed"
+            RiskLevel.LOW: "Good",
+            RiskLevel.MODERATE: "Attention Recommended",
+            RiskLevel.HIGH: "Consult Doctor",
+            RiskLevel.CRITICAL: "Urgent Care Needed"
         }
         return statuses.get(level, "Unknown")
     
@@ -533,13 +544,13 @@ class EnhancedPatientReportGenerator:
     def _get_biomarker_status_icon(self, status: str) -> str:
         """Get icon for biomarker status."""
         if status == "normal":
-            return "✓ Normal"
+            return "Normal"
         elif status == "low":
-            return "⚠ Below Normal"
+            return "Below Normal"
         elif status == "high":
-            return "⚠ Above Normal"
+            return "Above Normal"
         else:
-            return "— Not Assessed"
+            return "Not Assessed"
     
     def _format_normal_range(self, normal_range: Optional[tuple]) -> str:
         """Format normal range for display."""
@@ -593,7 +604,28 @@ class EnhancedPatientReportGenerator:
             "balance_score": {
                 "normal": "<b>Meaning:</b> You have good stability.<br/><b>Details:</b> Your body effectively maintains posture against gravity.<br/><b>Guidance:</b> Yoga or Tai Chi are great for maintaining this.",
                 "low": "<b>Meaning:</b> Your stability is reduced.<br/><b>Potential Causes:</b> Inner ear issues, muscle weakness, vision problems, or medication side effects.<br/><b>Guidance:</b> Clear walking paths at home. Incorporate balance exercises (e.g., standing on one leg with support)."
-            }
+            },
+            # Thermal biomarker explanations
+            "skin_temperature": {
+                "normal": "<b>Meaning:</b> Your body temperature is in the normal range (36-37.5°C).<br/><b>Details:</b> This indicates healthy thermoregulation and no signs of fever.<br/><b>Guidance:</b> No action needed. Stay hydrated.",
+                "high": "<b>Meaning:</b> Your temperature is elevated, which may indicate fever.<br/><b>Potential Causes:</b> Infection, inflammation, recent physical activity, or warm environment.<br/><b>Guidance:</b> Rest, hydrate, and monitor. If fever persists over 38°C with symptoms, see a doctor."
+            },
+            "inflammation_index": {
+                "normal": "<b>Meaning:</b> No significant inflammation detected in the facial region.<br/><b>Details:</b> Normal thermal distribution across your face suggests healthy blood flow.<br/><b>Guidance:</b> Maintain a healthy lifestyle with anti-inflammatory foods.",
+                "high": "<b>Meaning:</b> Elevated inflammation markers detected via thermal imaging.<br/><b>Potential Causes:</b> Localized inflammation, allergies, skin conditions, or early signs of infection.<br/><b>Guidance:</b> If you notice swelling or pain, consult a doctor. Consider reducing processed foods."
+            },
+            "thermal_asymmetry": {
+                "normal": "<b>Meaning:</b> Your facial thermal pattern is symmetric.<br/><b>Details:</b> Balanced blood perfusion on both sides suggests healthy circulation.<br/><b>Guidance:</b> Continue cardiovascular exercise to maintain good circulation.",
+                "high": "<b>Meaning:</b> There's a temperature difference between left and right sides of your face.<br/><b>Potential Causes:</b> Vascular issues, nerve problems, or localized inflammation.<br/><b>Guidance:</b> If asymmetry is noticeable visually or you have numbness, consult a doctor."
+            },
+            "thermal_stress_gradient": {
+                "normal": "<b>Meaning:</b> Your autonomic stress response is balanced.<br/><b>Details:</b> The temperature pattern between forehead and nose is healthy.<br/><b>Guidance:</b> Continue stress-management practices like meditation or exercise.",
+                "high": "<b>Meaning:</b> Signs of elevated stress detected via thermal gradient.<br/><b>Potential Causes:</b> Psychological stress, anxiety, or autonomic nervous system activation.<br/><b>Guidance:</b> Try relaxation techniques. If chronic, consider speaking with a counselor."
+            },
+            "microcirculation_temp": {
+                "normal": "<b>Meaning:</b> Your microcirculation temperature indicates healthy small vessel blood flow.<br/><b>Details:</b> Good microvascular function is important for metabolic health.<br/><b>Guidance:</b> Maintain blood sugar levels and exercise regularly.",
+                "low": "<b>Meaning:</b> Reduced temperature in areas indicating potential microvascular issues.<br/><b>Potential Causes:</b> Early diabetes indicators, circulatory issues, or cold exposure.<br/><b>Guidance:</b> Monitor blood sugar. Consider a diabetes screening if you have risk factors."
+            },
         }
         
         # Get explanation or provide default
@@ -727,13 +759,25 @@ Format as a single paragraph with line breaks (<br/>) between sections. Keep it 
             # 1. Header and Table Group (KeepTogether)
             header_group = []
             
-            # System name and overall status
+            # System name (clean header, no status text)
             system_header = Paragraph(
-                f"<b>{system_name}</b> — {self._get_simple_status(risk_level)}",
+                f"<b>{system_name}</b>",
                 self._styles['SubHeader']
             )
             header_group.append(system_header)
-            header_group.append(Spacer(1, 8))
+            header_group.append(Spacer(1, 6))
+
+            # Visual risk indicator (pill)
+            header_group.append(
+                RiskIndicator(
+                    risk_level=risk_level,
+                    width=200,
+                    height=28
+                )
+            )
+
+            header_group.append(Spacer(1, 10))
+
             
             # Biomarker details table
             if biomarkers:
@@ -786,19 +830,17 @@ Format as a single paragraph with line breaks (<br/>) between sections. Keep it 
                 # Add status pill colors for the status column
                 for i, row in enumerate(table_data[1:], start=1):
                     status_text = row[3]
-                    # We won't color the whole row, just the status text or cell if possible.
-                    # For minimalist look, let's keep the row white but maybe distinct text color?
-                    # actually, the STATUS_COLORS are pastel backgrounds. 
-                    # Let's apply a subtle background to the Status cell ONLY.
+                    # Determine background color based on status
+                    # Check order matters: check "Above/Below" before "Normal" to avoid false matches
                     
-                    if "Normal" in status_text or "Good" in status_text:
-                        bg_color = STATUS_COLORS["normal"]
-                    elif "Below" in status_text or "Low" in status_text:
-                        bg_color = STATUS_COLORS["low"]
-                    elif "Above" in status_text or "High" in status_text:
-                        bg_color = STATUS_COLORS["high"]
+                    if "Below" in status_text:
+                        bg_color = STATUS_COLORS["low"]  # Pastel orange
+                    elif "Above" in status_text:
+                        bg_color = STATUS_COLORS["high"]  # Pastel orange
+                    elif "✓" in status_text or status_text == "✓ Normal":
+                        bg_color = STATUS_COLORS["normal"]  # Mint green (only for truly normal)
                     else:
-                        bg_color = STATUS_COLORS["not_assessed"]
+                        bg_color = STATUS_COLORS["not_assessed"]  # Light gray
                         
                     # Apply background to the Status column (index 3)
                     table_style.append(('BACKGROUND', (3, i), (3, i), bg_color))
