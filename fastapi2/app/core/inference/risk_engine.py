@@ -131,24 +131,27 @@ class RiskEngine:
         """Initialize biomarker weights for each system."""
         return {
             PhysiologicalSystem.CNS: {
-                "gait_variability": 0.25,
-                "posture_entropy": 0.20,
-                "tremor_resting": 0.25,
-                "tremor_postural": 0.15,
+                "gait_variability": 0.22,
+                "posture_entropy": 0.18,
+                "tremor_resting": 0.22,
+                "tremor_postural": 0.13,
                 "cns_stability_score": 0.15,
+                "thermal_stress_gradient": 0.10,  # Autonomic stress from thermal
             },
             PhysiologicalSystem.CARDIOVASCULAR: {
-                "heart_rate": 0.25,
-                "hrv_rmssd": 0.25,
-                "systolic_bp": 0.20,
-                "diastolic_bp": 0.15,
+                "heart_rate": 0.22,
+                "hrv_rmssd": 0.22,
+                "systolic_bp": 0.18,
+                "diastolic_bp": 0.13,
                 "chest_micro_motion": 0.15,
+                "thermal_asymmetry": 0.10,  # Facial perfusion asymmetry
             },
             PhysiologicalSystem.RENAL: {
-                "fluid_asymmetry_index": 0.30,
-                "total_body_water_proxy": 0.25,
-                "extracellular_fluid_ratio": 0.25,
-                "fluid_overload_index": 0.20,
+                "fluid_asymmetry_index": 0.25,
+                "total_body_water_proxy": 0.22,
+                "extracellular_fluid_ratio": 0.20,
+                "fluid_overload_index": 0.18,
+                "microcirculation_temp": 0.15,  # Diabetes/microvascular from thermal
             },
             PhysiologicalSystem.GASTROINTESTINAL: {
                 "abdominal_rhythm_score": 0.40,
@@ -163,11 +166,13 @@ class RiskEngine:
                 "average_joint_rom": 0.15,
             },
             PhysiologicalSystem.SKIN: {
-                "texture_roughness": 0.25,
-                "skin_redness": 0.20,
-                "skin_yellowness": 0.25,
-                "color_uniformity": 0.15,
-                "lesion_count": 0.15,
+                "texture_roughness": 0.20,
+                "skin_redness": 0.15,
+                "skin_yellowness": 0.20,
+                "color_uniformity": 0.12,
+                "lesion_count": 0.13,
+                "inflammation_index": 0.12,  # Thermal inflammation marker
+                "skin_temperature": 0.08,    # Fever detection
             },
             PhysiologicalSystem.EYES: {
                 "blink_rate": 0.20,

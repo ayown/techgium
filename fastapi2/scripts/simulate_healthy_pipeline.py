@@ -55,8 +55,10 @@ def simulate_healthy_screening():
     # Temp: 36.1-37.2. Target 36.6.
     print("  - Generating Skin data (MLX90640 Thermal)...")
     skin_biomarkers = [
-        create_biomarker("surface_temperature_avg", 36.6, "C", [36.1, 37.2]),
-        create_biomarker("thermal_asymmetry", 0.1, "C", [0.0, 0.5]) # Low asymmetry is good
+        create_biomarker("skin_temperature", 36.6, "C", [35.0, 38.0]),       # Normal
+        create_biomarker("skin_temperature_max", 37.0, "C", [36.0, 38.5]),   # Normal
+        create_biomarker("inflammation_index", 5.0, "%", [0.0, 15.0]),       # Normal
+        create_biomarker("thermal_asymmetry", 0.2, "C", [0.0, 0.5]),         # Low asymmetry
     ]
     systems_data.append({
         "system": "skin",
@@ -68,7 +70,8 @@ def simulate_healthy_screening():
     cns_biomarkers = [
         create_biomarker("gait_variability", 0.02, "score", [0.0, 0.05]), # Low variability is stable
         create_biomarker("cns_stability_score", 95.0, "score", [80.0, 100.0]),
-        create_biomarker("tremor_resting", 0.0, "amp", [0.0, 0.1])
+        create_biomarker("tremor_resting", 0.0, "amp", [0.0, 0.1]),
+        create_biomarker("thermal_stress_gradient", 1.5, "C", [0.0, 3.0]),  # Normal stress
     ]
     systems_data.append({
         "system": "cns",
