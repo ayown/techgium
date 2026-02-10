@@ -59,7 +59,6 @@ class Biomarker:
         return "normal"
     
     def to_dict(self) -> Dict[str, Any]:
-<<<<<<< HEAD
         """Convert to dictionary (all values are native Python types for JSON safety)."""
         abnormal = self.is_abnormal()
         return {
@@ -69,25 +68,6 @@ class Biomarker:
             "confidence": float(self.confidence),
             "normal_range": [float(x) for x in self.normal_range] if self.normal_range else None,
             "is_abnormal": bool(abnormal) if abnormal is not None else None,
-=======
-        """Convert to dictionary."""
-        # Convert numpy types to native Python types for JSON serialization
-        is_abnormal_val = self.is_abnormal()
-        if is_abnormal_val is not None:
-            is_abnormal_val = bool(is_abnormal_val)
-        
-        # Convert value to native Python float if it's a numpy type
-        value = float(self.value) if hasattr(self.value, 'item') else self.value
-        confidence = float(self.confidence) if hasattr(self.confidence, 'item') else self.confidence
-        
-        return {
-            "name": self.name,
-            "value": value,
-            "unit": self.unit,
-            "confidence": confidence,
-            "normal_range": self.normal_range,
-            "is_abnormal": is_abnormal_val,
->>>>>>> 0f7802f4549abc193b40b8ac777345c64044af15
             "status": self.status,
             "description": self.description,
         }
