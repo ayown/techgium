@@ -505,4 +505,49 @@ Enhanced the PDF patient report generator with improved status color coding and 
 - **2026-02-09**: Removed emoji icons (✓, ⚠, —) from status text for cleaner PDF rendering
 - Verified with unhealthy patient simulation
 
-test
+---
+
+## Deep Dive: Biomarker Extraction Logic
+
+Each extraction module uses a combination of signal processing, computer vision, and physical modeling to derive health markers.
+
+### 🫀 Cardiovascular (`cardiovascular.py`)
+- **Heart Rate (rPPG)**: Tracks tiny color changes in facial skin (green channel) caused by the pulse. Uses FFT (Fast Fourier Transform) to find the dominant "beat" frequency.
+- **Heart Rate (Radar)**: Uses 60GHz mmWave radar to detect rhythmic chest displacement with sub-millimeter precision.
+- **HRV (Heart Rate Variability)**: Measures the millisecond-level variation between beats (RMSSD). High variability often indicates better autonomic health.
+- **Thermal Asymmetry**: Compares temperatures between left and right facial regions to detect blood flow imbalances.
+
+### 🧠 Central Nervous System (`cns.py`)
+- **Gait Variability**: Uses "Zeni's method" to identify heel strikes from ankle vertical position. Calculates how consistent your stride timing is.
+- **Postural Sway Complexity**: Calculates "Sample Entropy" of your body's center of mass motion. Higher complexity usually indicates a healthier, more adaptable balance system.
+- **Tremor Analysis**: Uses spectral analysis (Welch PSD) on hand motion to identify specific frequency bands (e.g., 4-6 Hz) typical of different neurological conditions.
+
+### 👁️ Eyes (`eyes.py`)
+- **Blink Rate (EAR)**: Calculates the Eye Aspect Ratio (height-to-width) using 6 landmarks per eye. Detects a blink when the ratio drops sharply.
+- **Gaze Stability**: Follows ISO 9241-3 standards to measure how steady your eyes remain during fixation using RMS velocity.
+- **Symmetry**: Correlates the motion patterns of both eyes to ensure they are moving in unison.
+
+### 🫁 Pulmonary (`pulmonary.py`)
+- **Respiration Rate**: Extracted from mmWave radar signals that track the rise and fall of the chest.
+- **Breathing Depth**: Analyzes the magnitude (amplitude) of the radar signal's chest displacement.
+
+### 🛡️ Skin (`skin.py`)
+- **Texture Roughness**: Uses GLCM (Gray Level Co-occurrence Matrix) to measure contrast in skin pixels, acting as a proxy for surface smoothness or roughness.
+- **Skin Color (CIELab)**: Analyzes the 'a*' (green-red) and 'b*' (blue-yellow) color channels to detect redness (inflammation proxy) or yellowness (jaundice proxy).
+- **Thermal "Hot Spots"**: Identifies localized inflammation by counting "hot pixels" in thermal camera data.
+
+### 🦴 Skeletal (`skeletal.py`)
+- **Bilateral Symmetry**: Compares the 3D range of motion between left and right joints (shoulders, elbows, knees).
+- **Stance Stability**: Measures the sway of the hips/center-of-mass to assess physical balance and core stability.
+
+### 🧪 Renal (`renal.py`)
+- **Fluid Distribution Index**: Uses Bioimpedance (RIS) to assess how water is distributed across the body, looking for asymmetries.
+- **Microcirculation (Diabetes Proxy)**: Monitors the temperature of the inner canthus (tear duct area) as a proxy for peripheral blood flow health.
+
+### 🍔 Gastrointestinal (`gastrointestinal.py`)
+- **Abdominal Rhythm**: Projects abdominal motion into the frequency domain to look for the slow, rhythmic patterns (0.05 Hz) typical of gut motility.
+- **Visceral Variance**: Measures the "energy" or amount of movement in the abdominal area.
+
+### 👃 Nasal (`nasal.py`)
+- **Nostril Flare**: Measures the dilation of nostrils during breathing as a proxy for respiratory effort (work of breathing).
+- **Nasal Cycle Balance**: Analyzes the alternating dominance of airflow between left and right nostrils using nostril area ratios.
