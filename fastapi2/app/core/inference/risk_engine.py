@@ -2,6 +2,7 @@
 Risk Engine Module
 
 Computes system-specific risk scores from biomarker values.
+Enhanced with confidence calibration for more accurate risk assessment.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -11,6 +12,15 @@ import numpy as np
 
 from app.core.extraction.base import BiomarkerSet, PhysiologicalSystem, Biomarker
 from app.utils import get_logger
+
+# Optional confidence calibration (graceful fallback if not available)
+try:
+    from app.core.inference.calibration import ConfidenceCalibrator, CalibrationFactors
+    CALIBRATION_AVAILABLE = True
+except ImportError:
+    CALIBRATION_AVAILABLE = False
+    ConfidenceCalibrator = None
+    CalibrationFactors = None
 
 # Conditional imports to avoid circular dependency
 if TYPE_CHECKING:
@@ -124,11 +134,26 @@ class RiskEngine:
     Uses rule-based scoring with configurable thresholds.
     """
     
-    def __init__(self):
-        """Initialize risk engine with default thresholds."""
+    def __init__(self, use_calibration: bool = True):
+        """Initialize risk engine with default thresholds.
+        
+        Args:
+            use_calibration: Whether to use confidence calibration (if available)
+        """
         self._computation_count = 0
         self._risk_weights = self._initialize_weights()
-        logger.info("RiskEngine initialized")
+        self._use_calibration = use_calibration
+        
+        # Initialize calibrator if available and enabled
+        self._calibrator = None
+        if use_calibration and CALIBRATION_AVAILABLE:
+            try:
+                self._calibrator = ConfidenceCalibrator()
+                logger.info("RiskEngine initialized WITH confidence calibration")
+            except Exception as e:
+                logger.warning(f"Failed to initialize calibrator: {e}. Falling back to basic confidence.")
+        else:
+            logger.info("RiskEngine initialized (basic confidence scoring)")
     
     def _initialize_weights(self) -> Dict[PhysiologicalSystem, Dict[str, float]]:
         """Initialize biomarker weights for each system."""
@@ -298,6 +323,17 @@ class RiskEngine:
             alerts=alerts
         )
         
+        # ENHANCEMENT: Apply confidence calibration to result
+        if self._calibrator is not None:
+            try:
+                original_confidence = result.overall_risk.confidence
+                result = self._calibrator.calibrate_risk_result(result)
+                logger.debug(
+                    f"Calibrated {system.value} confidence: {original_confidence:.3f} -> {result.overall_risk.confidence:.3f}"
+                )
+            except Exception as e:
+                logger.warning(f"Confidence calibration failed (non-critical): {e}")
+        
         self._computation_count += 1
         logger.debug(f"Risk computed for {system.value}: {overall_score:.1f}")
         
@@ -437,8 +473,9 @@ class RiskEngine:
             Tuple of (risk_score 0-100, alert_message or None)
         """
         if biomarker.normal_range is None:
-            # No normal range defined, assume moderate risk based on value
-            return 30.0, None
+            # No normal range defined - assume normal baseline (e.g., stationary gait)
+            # Use 20.0 (Low Risk) instead of 30.0 to avoid false moderate risk
+            return 20.0, None
         
         low, high = biomarker.normal_range
         value = biomarker.value

@@ -126,13 +126,17 @@ class CNSExtractor(BaseExtractor):
         gait_var, heel_strikes = self._calculate_gait_variability(pose_array)
         gait_confidence = min(0.95, 0.5 + len(heel_strikes) / 20)  # More strides = higher confidence
         
+        # CONTEXT-AWARE: Signal stationary state by setting normal_range=None
+        # This triggers "not_assessed" status instead of misleading "Normal"
+        gait_normal_range = None if len(heel_strikes) == 0 else self.normal_ranges["gait_variability"]
+        
         self._add_biomarker(
             biomarker_set,
             name="gait_variability",
             value=gait_var,
             unit="coefficient_of_variation",
             confidence=gait_confidence,
-            normal_range=self.normal_ranges["gait_variability"],
+            normal_range=gait_normal_range,
             description="Stride-to-stride timing variability (Zeni heel strike method)"
         )
         

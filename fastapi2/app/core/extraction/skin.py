@@ -146,7 +146,7 @@ class SkinExtractor(BaseExtractor):
             value=texture_roughness,
             unit="glcm_contrast",
             confidence=0.75,
-            normal_range=(10, 80),  # Literature: 10-100 for skin textures
+            normal_range=(0.0, 5.0),  # Calibrated for webcam GLCM (32 levels, bilateral filtered)
             description="Skin surface texture (GLCM Contrast, multi-angle)"
         )
         
@@ -159,7 +159,7 @@ class SkinExtractor(BaseExtractor):
             value=color_metrics["redness"],
             unit="lab_deviation",
             confidence=0.85,
-            normal_range=(15, 40),  # Lab deviation scale for Fitzpatrick I-VI
+            normal_range=(0.0, 25.0),  # Calibrated: Low redness = healthy, high = inflammation
             description="Skin redness (Hemoglobin proxy, Lab a* deviation)"
         )
         
@@ -169,7 +169,7 @@ class SkinExtractor(BaseExtractor):
             value=color_metrics["yellowness"],
             unit="lab_deviation",
             confidence=0.80,
-            normal_range=(15, 40),  # Lab deviation scale for Fitzpatrick I-VI
+            normal_range=(0.0, 25.0),  # Calibrated: Low yellowness = healthy, high = jaundice proxy
             description="Skin yellowness (Bilirubin proxy, Lab b* deviation)"
         )
         
@@ -179,7 +179,7 @@ class SkinExtractor(BaseExtractor):
             value=color_metrics["uniformity"],
             unit="entropy_inv",
             confidence=0.70,
-            normal_range=(0.6, 0.95),  # Adjusted for realistic entropy range
+            normal_range=(0.25, 1.0),  # Calibrated: Real skin has natural variation (0.25-0.7 typical)
             description="Skin tone uniformity (Inverse Entropy)"
         )
         
