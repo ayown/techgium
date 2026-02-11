@@ -21,6 +21,14 @@ from app.core.agents.medical_agents import ConsensusResult
 from app.core.llm.gemini_client import GeminiClient, GeminiConfig
 from app.utils import get_logger
 
+# Optional explanation generator (for offline fallback)
+try:
+    from app.core.inference.explanation import ExplanationGenerator
+    EXPLANATION_GENERATOR_AVAILABLE = True
+except ImportError:
+    EXPLANATION_GENERATOR_AVAILABLE = False
+    ExplanationGenerator = None
+
 logger = get_logger(__name__)
 
 # Import reportlab
@@ -610,7 +618,8 @@ class EnhancedPatientReportGenerator:
             },
             "gait_variability": {
                 "normal": "<b>Meaning:</b> Your walking pattern is steady and rhythmic.<br/><b>Details:</b> This indicates good balance and neurological control.<br/><b>Guidance:</b> Maintain activity levels to preserve this mobility.",
-                "high": "<b>Meaning:</b> Your steps vary significantly in timing or length.<br/><b>Potential Causes:</b> Fatigue, joint pain, muscle weakness, or potential neurological concerns.<br/><b>Guidance:</b> Focus on strength training for legs/core. Wear supportive shoes. Consider a gait analysis if falls are a concern."
+                "high": "<b>Meaning:</b> Your steps vary significantly in timing or length.<br/><b>Potential Causes:</b> Fatigue, joint pain, muscle weakness, or potential neurological concerns.<br/><b>Guidance:</b> Focus on strength training for legs/core. Wear supportive shoes. Consider a gait analysis if falls are a concern.",
+                "not_assessed": "<b>Meaning:</b> Gait was not assessed because you were stationary during the scan.<br/><b>Details:</b> You appeared to be sitting or standing still. Walking analysis requires movement across the camera frame.<br/><b>Guidance:</b> For future screenings, ensure you walk naturally in front of the camera for at least 10 seconds to enable gait assessment."
             },
             "balance_score": {
                 "normal": "<b>Meaning:</b> You have good stability.<br/><b>Details:</b> Your body effectively maintains posture against gravity.<br/><b>Guidance:</b> Yoga or Tai Chi are great for maintaining this.",
@@ -1006,7 +1015,15 @@ BIOMARKERS:
                 table_data = [["What We Measured", "Your Value", "Normal Range", "Status"]]
                 
                 for bm_name, bm_data in biomarkers.items():
+                    # CONTEXT-AWARE: Check for stationary gait BEFORE simplification
+                    is_stationary_gait = (bm_name == "gait_variability" and bm_data.get('status') == 'not_assessed')
+                    
                     friendly_name = self._simplify_biomarker_name(bm_name)
+                    
+                    # Add (Stationary) suffix for stationary gait
+                    if is_stationary_gait:
+                        friendly_name += " (Stationary)"
+                    
                     # Round value to 2 decimal places
                     value = bm_data['value']
                     if isinstance(value, (int, float)):
@@ -1018,6 +1035,10 @@ BIOMARKERS:
                     normal_range = self._format_normal_range(bm_data.get('normal_range'))
                     status = bm_data.get('status', 'not_assessed')
                     status_icon = self._get_biomarker_status_icon(status)
+                    
+                    # Update status label for stationary gait
+                    if is_stationary_gait:
+                        status_icon = "Not Assessed (Stationary)"
                     
                     table_data.append([friendly_name, value_str, normal_range, status_icon])
                 
@@ -1087,7 +1108,9 @@ BIOMARKERS:
                 # Use PRE-COMPUTED global explanations instead of per-system batched calls
                 for bm_name, bm_data in biomarkers.items():
                     status = bm_data.get('status', 'not_assessed')
-                    if status != 'not_assessed':
+                    
+                    # CONTEXT-AWARE: Include explanation for stationary gait
+                    if status != 'not_assessed' or bm_name == 'gait_variability':
                         # Try global AI explanation first, fallback to hardcoded
                         explanation = global_explanations.get(
                             bm_name,
