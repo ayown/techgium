@@ -26,11 +26,14 @@ class RiskLevel(str, Enum):
     MODERATE = "moderate"
     HIGH = "high"
     CRITICAL = "critical"
+    UNKNOWN = "unknown"
     
     @classmethod
     def from_score(cls, score: float) -> "RiskLevel":
         """Convert numeric score (0-100) to risk level."""
-        if score < 25:
+        if score < 0:
+            return cls.UNKNOWN
+        elif score < 25:
             return cls.LOW
         elif score < 50:
             return cls.MODERATE
@@ -170,9 +173,10 @@ class RiskEngine:
                 "skin_redness": 0.15,
                 "skin_yellowness": 0.20,
                 "color_uniformity": 0.12,
-                "lesion_count": 0.13,
+                "lesion_count": 0.08,
                 "inflammation_index": 0.12,  # Thermal inflammation marker
                 "skin_temperature": 0.08,    # Fever detection
+                "thermal_stability": 0.05,   # Thermal measurement consistency
             },
             PhysiologicalSystem.EYES: {
                 "blink_rate": 0.20,
@@ -209,6 +213,24 @@ class RiskEngine:
         start_time = time.time()
         
         system = biomarker_set.system
+        
+        # Handle empty biomarker set (device not connected/no data)
+        if not biomarker_set.biomarkers:
+            overall_risk = RiskScore(
+                name=f"{system.value}_overall",
+                score=-1.0,  # Sentinel for unknown
+                confidence=0.0,
+                contributing_biomarkers=[],
+                explanation="Insufficient data provided. Sensor connection required."
+            )
+            return SystemRiskResult(
+                system=system,
+                overall_risk=overall_risk,
+                sub_risks=[],
+                biomarker_summary={},
+                alerts=["Device required/Not connected"]
+            )
+
         sub_risks = []
         alerts = []
         contributing_biomarkers = []
@@ -468,6 +490,9 @@ class RiskEngine:
         alerts: List[str]
     ) -> str:
         """Generate explanation for overall system risk."""
+        if score < 0:
+            return f"{system.value.replace('_', ' ').title()} not assessed due to missing data."
+
         level = RiskLevel.from_score(score)
         
         explanation = f"{system.value.replace('_', ' ').title()} assessment indicates {level.value} risk."
