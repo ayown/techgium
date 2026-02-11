@@ -9,6 +9,8 @@ Main application entry point with API endpoints for:
 from fastapi import FastAPI, HTTPException, Response, UploadFile, File, BackgroundTasks, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -117,6 +119,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---- Serve Frontend ----
+app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+
 
 # ---- In-memory storage (replace with database in production) ----
 _screenings: Dict[str, Dict[str, Any]] = {}
