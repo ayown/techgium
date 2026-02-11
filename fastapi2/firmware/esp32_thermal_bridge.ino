@@ -107,13 +107,21 @@ ROI getROIStats(int r1, int r2, int c1, int c2) {
 
 // ---------- FEATURE EXTRACTION ----------
 void extractThermalFeatures() {
+  // OPTIMIZED ROIs
   ROI left_canthus  = getROIStats(10, 14, 12, 14);
   ROI right_canthus = getROIStats(10, 14, 18, 20);
-  ROI neck          = getROIStats(22, 24, 10, 22);
+  
+  // FIXED: Scan higher up for neck (rows 18-22) to avoid collar/clothing at bottom
+  ROI neck          = getROIStats(18, 22, 10, 22); 
+  
   ROI left_cheek    = getROIStats(10, 18, 6, 14);
   ROI right_cheek   = getROIStats(10, 18, 18, 26);
   ROI nose          = getROIStats(16, 20, 14, 18);
   ROI forehead      = getROIStats(2, 8, 10, 22);
+
+  // NEW: Global Face Max (robust fever detector)
+  // Scan central face area (rows 4-20, cols 8-24) for absolute hottest pixel
+  ROI face_global   = getROIStats(4, 20, 8, 24);
 
   if (!left_canthus.valid || !right_canthus.valid || !neck.valid) {
     Serial.println("{\"error\":\"core_roi_missing\"}");
@@ -122,6 +130,10 @@ void extractThermalFeatures() {
 
   float canthus_mean =
     (left_canthus.temp_mean + right_canthus.temp_mean) / 2.0;
+    
+  // Use face_max if available, otherwise fallback to canthus max
+  float face_max_temp = face_global.valid ? face_global.temp_max : 
+                       max(left_canthus.temp_max, right_canthus.temp_max);
 
   float cheek_asymmetry = 0.0;
   if (left_cheek.valid && right_cheek.valid) {
@@ -148,7 +160,8 @@ void extractThermalFeatures() {
 
   json += "\"core_regions\":{";
   json += "\"canthus_mean\":" + String(canthus_mean, 2) + ",";
-  json += "\"neck_mean\":" + String(neck.temp_mean, 2);
+  json += "\"neck_mean\":" + String(neck.temp_mean, 2) + ",";
+  json += "\"face_max\":" + String(face_max_temp, 2); // NEW metric
   json += "},";
 
   json += "\"stability_metrics\":{";

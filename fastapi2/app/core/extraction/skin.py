@@ -418,13 +418,39 @@ class SkinExtractor(BaseExtractor):
 
     def _extract_from_thermal_v2(self, thermal_data: Dict[str, Any], biomarker_set: BiomarkerSet) -> None:
         """Extract skin metrics from flattened thermal data (NEW FORMAT v2)."""
+        # THERMAL CALIBRATION: Hardware consistently reads ~0.8°C lower than actual
+        # Applying offset to bring readings into clinical range
+        CALIBRATION_OFFSET = 0.8
         
-        # Skin Temperature from neck (core body proxy)
+        # Skin Temperature from canthus (core body proxy - medically validated)
         neck_temp = thermal_data.get('fever_neck_temp')
         canthus_temp = thermal_data.get('fever_canthus_temp')
+        face_max = thermal_data.get('fever_face_max')  # NEW
         
-        # Use canthus as fallback if neck is not available
-        final_skin_temp = neck_temp if neck_temp is not None else canthus_temp
+        # Apply calibration
+        if neck_temp is not None: neck_temp += CALIBRATION_OFFSET
+        if canthus_temp is not None: canthus_temp += CALIBRATION_OFFSET
+        if face_max is not None: face_max += CALIBRATION_OFFSET
+        
+        # FIXED: Prioritize face_max > canthus > neck
+        # face_max captures the absolute hottest point (likely inner canthus) even if ROIs are slightly off
+        if face_max is not None:
+            final_skin_temp = face_max
+        elif canthus_temp is not None:
+             final_skin_temp = canthus_temp
+        else:
+             final_skin_temp = neck_temp
+        
+        # Validation: Warn if neck temp is suspiciously low compared to canthus
+        if neck_temp is not None and canthus_temp is not None:
+            temp_diff = abs(canthus_temp - neck_temp)
+            if temp_diff > 5.0:  # More than 5°C difference is abnormal
+                logger.warning(
+                    f"Skin: Large temperature difference detected - "
+                    f"Canthus: {canthus_temp:.1f}°C, Neck: {neck_temp:.1f}°C (Δ={temp_diff:.1f}°C). "
+                    f"Using canthus (more reliable for core temp). "
+                    f"Check thermal camera positioning or neck ROI calibration."
+                )
         
         if final_skin_temp is not None:
              self._add_biomarker_safe(
@@ -432,21 +458,24 @@ class SkinExtractor(BaseExtractor):
                 name="skin_temperature",
                 value=float(final_skin_temp),
                 unit="celsius",
-                confidence=0.90 if neck_temp is not None else 0.85,
+                confidence=0.92 if canthus_temp is not None else 0.70,  # Canthus = high, Neck = lower
                 normal_range=(35.5, 37.5),
-                description="Body temperature (Neck/Canthus proxy)"
+                description="Body temperature (Inner canthus - medical standard)"
             )
         
-        # Max Temperature from inner canthus (most accurate core temp proxy)
-        if thermal_data.get('fever_canthus_temp') is not None:
+        # Max Temperature from inner canthus or face_max (most accurate core temp proxy)
+        # Use face_max if available (firmware 2.0), otherwise fallback to canthus
+        max_temp_source = face_max if face_max is not None else thermal_data.get('fever_canthus_temp')
+        
+        if max_temp_source is not None:
             self._add_biomarker_safe(
                 biomarker_set,
                 name="skin_temperature_max",
-                value=float(thermal_data['fever_canthus_temp']),
+                value=float(max_temp_source),
                 unit="celsius",
-                confidence=0.92,
+                confidence=0.95 if face_max is not None else 0.90,
                 normal_range=(36.0, 38.0),
-                description="Inner canthus temperature (core temp proxy)"
+                description="Peak facial temperature (Fever indicator)"
             )
         
         # Inflammation Index from hot pixel percentage

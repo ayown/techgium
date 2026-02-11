@@ -146,8 +146,8 @@ class BridgeConfig:
     # Camera
     camera_index: int = 0
     camera_fps: int = 30
-    face_capture_seconds: int = 10
-    body_capture_seconds: int = 10
+    face_capture_seconds: int = 20
+    body_capture_seconds: int = 20
     
     # API
     api_url: str = "http://localhost:8000"
@@ -690,6 +690,7 @@ class DataFusion:
                 
                 canthus_mean = core.get('canthus_mean')
                 neck_mean = core.get('neck_mean')
+                face_max = core.get('face_max')  # NEW
                 canthus_range = stability.get('canthus_range')
                 
                 # Calculate face_mean_temp from available core temperatures
@@ -713,6 +714,7 @@ class DataFusion:
                     # For SkinExtractor
                     'fever_neck_temp': neck_mean,
                     'fever_canthus_temp': canthus_mean,
+                    'fever_face_max': face_max,  # NEW
                     'thermal_stability': canthus_range,
                     'inflammation_pct': inflammation_pct,  # Calculated from thermal variance
                     'face_mean_temp': face_mean_temp,      # Calculated from available temps

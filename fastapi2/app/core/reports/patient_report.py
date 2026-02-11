@@ -114,7 +114,7 @@ BIOMARKER_NAMES = {
     "cholesterol": "Lipid Profile Estimate",
     # Skin biomarkers (Thermal: ESP32 thermal camera, Visual: texture/color analysis)
     "skin_temperature": "Body Temperature",
-    "skin_temperature_max": "Peak Skin Temperature",
+    "skin_temperature_max": "Max Facial Temp (Fever Check)",
     "inflammation_index": "Inflammation Level",
     "face_mean_temperature": "Facial Temperature",
     "thermal_stability": "Temperature Stability",

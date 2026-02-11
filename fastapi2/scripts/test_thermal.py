@@ -41,9 +41,19 @@ def run_test():
                     symmetry = thermal.get("symmetry", {})
                     gradients = thermal.get("gradients", {})
 
-                    print(f"\n[{time.strftime('%H:%M:%S')}] Thermal Data:")
-                    print(f"  - Canthus Mean: {core.get('canthus_mean', 'N/A')}°C")
-                    print(f"  - Neck Mean:    {core.get('neck_mean', 'N/A')}°C")
+                    print(f"\n[{time.strftime('%H:%M:%S')}] Thermal Data (Raw | Calibrated +0.8°C):")
+                    
+                    def fmt_temp(val):
+                        if val is None: return "N/A"
+                        try:
+                            f_val = float(val)
+                            return f"{f_val:.2f}°C | {f_val + 0.8:.2f}°C"
+                        except:
+                            return str(val)
+
+                    print(f"  - Face Max:     {fmt_temp(core.get('face_max'))}  <-- Fever Check")
+                    print(f"  - Canthus Mean: {fmt_temp(core.get('canthus_mean'))}")
+                    print(f"  - Neck Mean:    {fmt_temp(core.get('neck_mean'))}")
                     print(f"  - Stability:    {stability.get('canthus_range', 'N/A')} (Range)")
                     print(f"  - Symmetry:     {symmetry.get('cheek_asymmetry', 'N/A')} (Cheek Asymmetry)")
                     print(f"  - Gradient:     {gradients.get('forehead_nose_gradient', 'N/A')} (Forehead-Nose)")
@@ -53,9 +63,13 @@ def run_test():
             except json.JSONDecodeError:
                 # If not JSON, just print the raw line if it's not empty
                 print(f"[{time.strftime('%H:%M:%S')}] RAW: {line}")
+            except Exception as e:
+                print(f"[{time.strftime('%H:%M:%S')}] PARSE ERROR: {e} - Line: {line}")
 
     except KeyboardInterrupt:
         print("\nStopping test...")
+    except Exception as e:
+        print(f"\nCRITICAL ERROR: {e}")
     finally:
         ser.close()
         print("Serial port closed.")
