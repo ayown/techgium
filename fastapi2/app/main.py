@@ -250,6 +250,11 @@ async def run_screening(request: ScreeningRequest):
         
         for sys_input in request.systems:
             # Parse system
+            logger.info(f"Processing system: {sys_input.system} with {len(sys_input.biomarkers)} biomarkers")
+            if sys_input.system.lower() == "skin":
+                 bm_names = [b.name for b in sys_input.biomarkers]
+                 logger.info(f"Skin biomarkers received: {bm_names}")
+                 
             system = _parse_system(sys_input.system)
             
             # Convert biomarker inputs to Biomarker objects
