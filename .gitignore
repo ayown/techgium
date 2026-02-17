@@ -1,1 +1,2 @@
-venv/fastapi2/agent/*.gguf
+venv/
+.gguf
