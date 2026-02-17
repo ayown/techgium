@@ -183,9 +183,6 @@ class NasalExtractor(BaseExtractor):
                     description="Elevated local surface temperature (Nostril vs Cheek ROI) [Experimental]."
                 )
             
-<<<<<<< HEAD
-
-=======
         # 4. Airflow Thermal Symmetry Index
         # Requires oscillation amplitude from thermal data (preprocessing usually done in `thermal.py` or similar)
         # Expected keys: nostril_oscillation_amp_left, nostril_oscillation_amp_right
@@ -213,4 +210,3 @@ class NasalExtractor(BaseExtractor):
                 normal_range=(0.0, 0.2), # < 20% difference is normal
                 description="Thermal oscillation symmetry between nostrils during breathing [Non-Diagnostic]."
             )
->>>>>>> 5fb8453bef017d5d9f62d222de7a732819a54135

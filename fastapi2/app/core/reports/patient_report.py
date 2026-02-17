@@ -108,11 +108,7 @@ BIOMARKER_NAMES = {
     "breath_depth": "Breath Depth",
     "respiratory_regularity_index": "Breathing Stability",
     "nasal_surface_temp_elevation": "Nasal Temperature Check",
-<<<<<<< HEAD
-
-=======
     "airflow_thermal_symmetry_index": "Airflow Symmetry",
->>>>>>> 5fb8453bef017d5d9f62d222de7a732819a54135
     "gait_variability": "Walking Stability",
     "balance_score": "Balance Score",
     "tremor": "Hand Steadiness",
@@ -471,13 +467,9 @@ class EnhancedPatientReportGenerator:
         
         # Build system summaries WITH biomarker details for valid systems
         for system, result in system_results.items():
-<<<<<<< HEAD
-
-=======
             # Skip Renal system as requested by user
             if system == PhysiologicalSystem.RENAL:
                 continue
->>>>>>> 5fb8453bef017d5d9f62d222de7a732819a54135
 
             report.system_summaries[system] = {
                 "risk_level": result.overall_risk.level,
@@ -688,8 +680,6 @@ class EnhancedPatientReportGenerator:
                 "normal": "<b>Meaning:</b> Your breathing rate is normal (12-20 breaths/min).<br/><b>Details:</b> This suggests healthy lung function and calmness.<br/><b>Guidance:</b> Practice mindfulness to maintain this balance.",
                 "low": "<b>Meaning:</b> You are breathing slowly.<br/><b>Potential Causes:</b> Deep relaxation, sleepiness, or potential central nervous system effects.<br/><b>Guidance:</b> If you feel alert and fine, this is likely healthy. If confused or groggy, seek help.",
                 "high": "<b>Meaning:</b> Your breathing is rapid.<br/><b>Potential Causes:</b> Anxiety, exertion, fever, or respiratory distress.<br/><b>Guidance:</b> Rest and try 'box breathing' (inhale 4s, hold 4s, exhale 4s). If it persists, consult a doctor."
-<<<<<<< HEAD
-=======
             },
             "respiratory_regularity_index": {
                 "normal": "<b>Meaning:</b> Your autonomic nervous system appears stable.<br/><b>Details:</b> Measured by breath-to-breath variability (CV 0.02-0.25).<br/><b>Guidance:</b> Good sign of stress resilience.",
@@ -703,7 +693,6 @@ class EnhancedPatientReportGenerator:
             "airflow_thermal_symmetry_index": {
                 "normal": "<b>Meaning:</b> Airflow appears balanced between nostrils.<br/><b>Details:</b> Both sides contribute to breathing equally.<br/><b>Guidance:</b> Healthy nasal function.",
                 "high": "<b>Meaning:</b> Significant asymmetry in airflow detected.<br/><b>Potential Causes:</b> Deviated septum, unilateral congestion, or nasal cycle peak.<br/><b>Guidance:</b> Common and often benign, but consult an ENT if breathing is difficult."
->>>>>>> 5fb8453bef017d5d9f62d222de7a732819a54135
             },
             "respiratory_regularity_index": {
                 "normal": "<b>Meaning:</b> Your autonomic nervous system appears stable.<br/><b>Details:</b> Measured by breath-to-breath variability (CV 0.02-0.25).<br/><b>Guidance:</b> Good sign of stress resilience.",
@@ -1086,11 +1075,7 @@ BIOMARKERS:
             system_name = system.value.replace("_", " ").title()
             
             # Phase 2: Add Experimental tag for specific systems
-<<<<<<< HEAD
             is_experimental = system in [PhysiologicalSystem.NASAL]
-=======
-            is_experimental = system in [PhysiologicalSystem.NASAL, PhysiologicalSystem.RENAL]
->>>>>>> 5fb8453bef017d5d9f62d222de7a732819a54135
             if is_experimental:
                 system_name += " (Experimental)"
             
