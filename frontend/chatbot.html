@@ -394,7 +394,7 @@
             align-items: center;
             gap: 6px;
         }
-
+        
         .sidebar-citation-title {
             font-size: 15px;
             font-weight: 500;
@@ -450,9 +450,6 @@
                 </div>
                 <div class="header-controls">
                     <div class="connection-status" id="connectionStatus">Connecting...</div>
-                    <button class="language-toggle active" id="langEn">English</button>
-                    <button class="language-toggle" id="langHi">हिंदी</button>
-                    <button class="mode-toggle" id="modeToggle">General Q&A</button>
                 </div>
             </div>
 
@@ -518,9 +515,6 @@
         const emergencyAlert = document.getElementById('emergencyAlert');
         const emergencyText = document.getElementById('emergencyText');
         const connectionStatus = document.getElementById('connectionStatus');
-        const langEn = document.getElementById('langEn');
-        const langHi = document.getElementById('langHi');
-        const modeToggle = document.getElementById('modeToggle');
         
         const sourcesSidebar = document.getElementById('sourcesSidebar');
         const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -819,25 +813,7 @@
             this.style.height = Math.min(this.scrollHeight, 120) + 'px';
         });
 
-        langEn.addEventListener('click', () => {
-            currentLanguage = 'en';
-            langEn.classList.add('active');
-            langHi.classList.remove('active');
-            // Language switching can be implemented in FastAPI later
-        });
 
-        langHi.addEventListener('click', () => {
-            currentLanguage = 'hi';
-            langHi.classList.add('active');
-            langEn.classList.remove('active');
-            // Language switching can be implemented in FastAPI later
-        });
-
-        modeToggle.addEventListener('click', () => {
-            currentMode = currentMode === 'general' ? 'diagnostic' : 'general';
-            modeToggle.textContent = currentMode === 'general' ? 'General Q&A' : 'Diagnostic Mode';
-            // Mode switching can be implemented in FastAPI later
-        });
     </script>
 </body>
 

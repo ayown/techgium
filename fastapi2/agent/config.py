@@ -33,14 +33,40 @@ SYSTEM_PROMPT = (
     "You are Chiranjeevi, a knowledgeable and compassionate AI health assistant.\n"
     "STRICT RULES you MUST follow:\n"
     "1. You are an AI assistant, NOT a doctor. clarifies this if asked.\n"
-    "2. Provide DETAILED, comprehensive explanations. Explain potential causes, risk factors, and actionable steps.\n"
-    "3. When answering, structure your response with clear headings or bullet points.\n"
-    "4. Use emojis like 🌿 💙 ✨ 😊 naturally to be warm and friendly.\n"
-    "5. If research evidence is provided, you MUST cite it using the format [Source Name].\n"
-    "6. When a user describes symptoms, ask clarifying questions only if necessary. Otherwise, provide a thorough analysis of possibilities.\n"
+    "2. CRITICAL: When a user FIRST describes symptoms (and you haven't asked questions yet), ask 2-3 targeted follow-up questions:\n"
+    "   - Duration and severity\n"
+    "   - Associated symptoms or triggers\n"
+    "   - Medical history if relevant\n"
+    "   If the user is ANSWERING your previous questions, DO NOT ask again. Provide your analysis.\n"
+    "3. After gathering context through follow-up questions, provide DETAILED, comprehensive explanations with potential causes, risk factors, and actionable steps.\n"
+    "4. Structure your response with clear headings or bullet points.\n"
+    "5. Use emojis like 🌿 💙 ✨ 😊 naturally to be warm and friendly.\n"
+    "6. If research evidence is provided, you MUST cite it using the format [Source Name].\n"
     "7. Always suggest practical, non-medical advice (lifestyle, diet, sleep) alongside medical context.\n"
     "8. Always end with: 'Please consult a real doctor for proper diagnosis 💙'\n"
-    "9. You are NOT 'Chat Doctor'. You are Chiranjeevai.\n"
+    "9. You are NOT 'Chat Doctor'. You are Chiranjeevi.\n"
+)
+
+# ── Context Quality Assessment Prompt ───────────────────────────────────
+CONTEXT_ASSESSOR_PROMPT = (
+    "Analyze if the following medical query has SUFFICIENT context for diagnosis.\n"
+    "Score from 0.0 (no context) to 1.0 (complete context).\n\n"
+    "Consider:\n"
+    "- Symptom duration and severity mentioned?\n"
+    "- Associated symptoms described?\n"
+    "- Patient demographics (age/gender) provided?\n"
+    "- Medical history or medications mentioned?\n\n"
+    "Query: {query}\n\n"
+    "Respond with ONLY a number between 0.0 and 1.0:\n"
+)
+
+# ── Clarification Generator Prompt ──────────────────────────────────────
+CLARIFICATION_PROMPT = (
+    "Generate 1-2 specific follow-up questions to gather missing medical context.\n"
+    "Be warm, empathetic, and use emojis.\n\n"
+    "User query: {query}\n"
+    "Missing context: {missing_info}\n\n"
+    "Questions:\n"
 )
 
 ROUTER_PROMPT_TEMPLATE = (
@@ -51,6 +77,5 @@ ROUTER_PROMPT_TEMPLATE = (
     "- GREETING: hello, hi, hey, good morning, thanks, bye, etc.\n"
     "- GENERAL: everything else (weather, sports, coding, etc.).\n\n"
     "User message: {query}\n\n"
-    
     "Category:"
 )

@@ -23,6 +23,7 @@ from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from agent.config import TEMPERATURE
 from agent.state import AgentState
 from agent.nodes import router_node, research_node, answer_node, set_llm
+from agent.clarification import clarification_node, set_llm as set_clarification_llm
 from langchain_core.messages import HumanMessage
 
 
@@ -34,8 +35,15 @@ def route_query(state: AgentState) -> str:
     """Conditional edge: decide whether to research or answer directly."""
     qt = state.get("query_type", "medical")
     if qt == "medical":
-        return "research_node"
+        return "clarification_node"
     return "answer_node"
+
+
+def route_after_clarification(state: AgentState) -> str:
+    """Route after clarification: ask more questions or proceed to research."""
+    if state.get("clarification_needed", False):
+        return "end"  # Return clarification questions to user
+    return "research_node"
 
 
 def build_graph() -> StateGraph:
@@ -44,13 +52,16 @@ def build_graph() -> StateGraph:
     Graph topology::
 
         START → router_node
-                  ├──(medical)──→ research_node → answer_node → END
+                  ├──(medical)──→ clarification_node
+                  │                 ├──(needs_clarification)──→ END (ask questions)
+                  │                 └──(sufficient_context)───→ research_node → answer_node → END
                   └──(other)────→ answer_node → END
     """
     graph = StateGraph(AgentState)
 
     # Add nodes
     graph.add_node("router_node", router_node)
+    graph.add_node("clarification_node", clarification_node)
     graph.add_node("research_node", research_node)
     graph.add_node("answer_node", answer_node)
 
@@ -60,8 +71,16 @@ def build_graph() -> StateGraph:
         "router_node",
         route_query,
         {
-            "research_node": "research_node",
+            "clarification_node": "clarification_node",
             "answer_node": "answer_node",
+        },
+    )
+    graph.add_conditional_edges(
+        "clarification_node",
+        route_after_clarification,
+        {
+            "end": END,
+            "research_node": "research_node",
         },
     )
     graph.add_edge("research_node", "answer_node")
@@ -100,6 +119,11 @@ def load_model():
     chat_model = ChatHuggingFace(llm=llm)
     
     print("✅ Model endpoint connected successfully!\n")
+    
+    # Set LLM for all modules
+    set_llm(chat_model)
+    set_clarification_llm(chat_model)
+    
     return chat_model
 
 
@@ -145,6 +169,9 @@ def main():
             "query_type": "",
             "research_data": "",
             "final_answer": "",
+            "clarification_needed": False,
+            "clarification_count": 0,
+            "context_quality": 0.0,
         })
 
         # Print the doctor's response

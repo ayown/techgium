@@ -84,7 +84,7 @@ class ScreeningService:
                     name=bm.get("name"),
                     value=bm.get("value"),
                     unit=bm.get("unit") or "",
-                    confidence=1.0,
+                    confidence=bm.get("confidence", 1.0),  # ← Use input confidence or default to 1.0,
                     normal_range=tuple(bm.get("normal_range")) if bm.get("normal_range") and len(bm.get("normal_range")) == 2 else None
                 )
                 for bm in biomarkers_input
@@ -107,7 +107,6 @@ class ScreeningService:
             # Run risk calculation
             trusted_result = self.risk_engine.compute_risk_with_validation(biomarker_set, plausibility=plausibility_result)
             trusted_results[system] = trusted_result
-            
             # Build response item
             if trusted_result.was_rejected:
                 response_results.append({
@@ -212,6 +211,8 @@ class ScreeningService:
         Assess overall data quality from raw sensor data or biomarker confidence.
         Returns a score from 0 to 1.
         """
+        logger.info(f"assess_data_quality called: data={data is not None}, systems_input={len(systems_input) if systems_input else 0}")
+        
         # Case 1: We have raw sensor metadata
         if data:
             try:
@@ -246,9 +247,11 @@ class ScreeningService:
             for sys in systems_input:
                 for bm in sys.get("biomarkers", []):
                     conf = bm.get("confidence")
+                    logger.debug(f"Biomarker {bm.get('name')}: confidence={conf}")
                     if conf is not None:
                         confidences.append(float(conf))
             
+            logger.info(f"Found {len(confidences)} confidence values")
             if confidences:
                 avg_conf = sum(confidences) / len(confidences)
                 logger.info(f"Data quality assessment (Biomarker Fallback): {avg_conf:.2f}")

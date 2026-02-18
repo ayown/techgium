@@ -25,9 +25,18 @@ class AgentState(TypedDict):
         Empty string when no research was performed.
     final_answer : str
         The synthesised doctor response returned to the user.
+    clarification_needed : bool
+        Whether the agent needs more context before answering.
+    clarification_count : int
+        Number of clarification questions asked (max 2).
+    context_quality : float
+        Quality score of gathered context (0.0-1.0).
     """
 
     messages: Annotated[List[BaseMessage], add_messages]
     query_type: str
     research_data: str
     final_answer: str
+    clarification_needed: bool
+    clarification_count: int
+    context_quality: float

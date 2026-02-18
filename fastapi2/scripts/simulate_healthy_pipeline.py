@@ -14,7 +14,9 @@ def create_biomarker(name: str, value: float, unit: str, normal_range: List[floa
         "value": value,
         "unit": unit,
         "status": "normal",
-        "normal_range": normal_range
+        "normal_range": normal_range,
+        "confidence": 0.95  # ADD THIS LINE - High confidence for simulated data
+    
     }
 
 def simulate_healthy_screening():

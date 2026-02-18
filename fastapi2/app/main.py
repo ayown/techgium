@@ -90,9 +90,9 @@ async def lifespan(app: FastAPI):
         try:
             logger.info("Initializing Medical Agent (Chiranjeevi)...")
             llm = await run_in_threadpool(load_model)
-            set_llm(llm)
+            # LLM is now set in load_model() for all modules
             app.state.medical_agent = build_graph()
-            logger.info("Medical Agent ready")
+            logger.info("Medical Agent ready with Trust Envelope™")
         except Exception as e:
             logger.error(f"Failed to load Medical Agent: {e}")
             app.state.medical_agent = None
