@@ -91,6 +91,7 @@ async def lifespan(app: FastAPI):
             logger.info("Initializing Medical Agent (Chiranjeevi)...")
             llm = await run_in_threadpool(load_model)
             # LLM is now set in load_model() for all modules
+            set_llm(llm)
             app.state.medical_agent = build_graph()
             logger.info("Medical Agent ready with Trust Envelope™")
         except Exception as e:
@@ -174,9 +175,6 @@ def _parse_system(system_name: str) -> PhysiologicalSystem:
         "respiratory": PhysiologicalSystem.PULMONARY,
         "lung": PhysiologicalSystem.PULMONARY,
         "lungs": PhysiologicalSystem.PULMONARY,
-        "renal": PhysiologicalSystem.RENAL,
-        "kidney": PhysiologicalSystem.RENAL,
-        "kidneys": PhysiologicalSystem.RENAL,
         "gastrointestinal": PhysiologicalSystem.GASTROINTESTINAL,
         "gi": PhysiologicalSystem.GASTROINTESTINAL,
         "gut": PhysiologicalSystem.GASTROINTESTINAL,

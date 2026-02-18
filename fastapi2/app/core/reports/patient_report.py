@@ -468,7 +468,8 @@ class EnhancedPatientReportGenerator:
         # Build system summaries WITH biomarker details for valid systems
         for system, result in system_results.items():
             # Skip Renal system as requested by user
-            if system == PhysiologicalSystem.RENAL:
+            # (Renal system has been removed from PhysiologicalSystem enum)
+            if system == "renal": 
                 continue
 
             report.system_summaries[system] = {
@@ -694,6 +695,16 @@ class EnhancedPatientReportGenerator:
                 "normal": "<b>Meaning:</b> Airflow appears balanced between nostrils.<br/><b>Details:</b> Both sides contribute to breathing equally.<br/><b>Guidance:</b> Healthy nasal function.",
                 "high": "<b>Meaning:</b> Significant asymmetry in airflow detected.<br/><b>Potential Causes:</b> Deviated septum, unilateral congestion, or nasal cycle peak.<br/><b>Guidance:</b> Common and often benign, but consult an ENT if breathing is difficult."
             },
+            "respiratory_regularity_index": {
+                "normal": "<b>Meaning:</b> Your autonomic nervous system appears stable.<br/><b>Details:</b> Measured by breath-to-breath variability (CV 0.02-0.25).<br/><b>Guidance:</b> Good sign of stress resilience.",
+                "low": "<b>Meaning:</b> Your breathing is extremely metronomic.<br/><b>Potential Causes:</b> Forced breathing control or rigidity.<br/><b>Guidance:</b> Relax and breathe naturally.",
+                "high": "<b>Meaning:</b> High breathing variability detected.<br/><b>Potential Causes:</b> Stress, anxiety, or irregular breathing patterns.<br/><b>Guidance:</b> Try 5 minutes of guided rhythmic breathing."
+            },
+            "nasal_surface_temp_elevation": {
+                "normal": "<b>Meaning:</b> No significant thermal inflammation detected.<br/><b>Details:</b> Temperature difference between nostril and cheek is normal (-0.2 to 1.0°C).<br/><b>Guidance:</b> Maintain nasal hygiene.",
+                "high": "<b>Meaning:</b> Elevated local temperature detected.<br/><b>Potential Causes:</b> Local inflammation, sinusitis, or congestion.<br/><b>Guidance:</b> If accompanied by pain or congestion, consider a check-up."
+            },
+
             "gait_variability": {
                 "normal": "<b>Meaning:</b> Your walking pattern is steady and rhythmic.<br/><b>Details:</b> This indicates good balance and neurological control.<br/><b>Guidance:</b> Maintain activity levels to preserve this mobility.",
                 "high": "<b>Meaning:</b> Your steps vary significantly in timing or length.<br/><b>Potential Causes:</b> Fatigue, joint pain, muscle weakness, or potential neurological concerns.<br/><b>Guidance:</b> Focus on strength training for legs/core. Wear supportive shoes. Consider a gait analysis if falls are a concern.",
@@ -1065,7 +1076,7 @@ BIOMARKERS:
             system_name = system.value.replace("_", " ").title()
             
             # Phase 2: Add Experimental tag for specific systems
-            is_experimental = system in [PhysiologicalSystem.NASAL, PhysiologicalSystem.RENAL]
+            is_experimental = system in [PhysiologicalSystem.NASAL]
             if is_experimental:
                 system_name += " (Experimental)"
             

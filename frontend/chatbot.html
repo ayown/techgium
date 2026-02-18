@@ -409,8 +409,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-
-     </style>
+    </style>
     </style>
 </head>
 
@@ -515,7 +514,6 @@
         const emergencyAlert = document.getElementById('emergencyAlert');
         const emergencyText = document.getElementById('emergencyText');
         const connectionStatus = document.getElementById('connectionStatus');
-        
         const sourcesSidebar = document.getElementById('sourcesSidebar');
         const sidebarOverlay = document.getElementById('sidebarOverlay');
         const sidebarContent = document.getElementById('sidebarContent');
@@ -551,7 +549,7 @@
         function updateTypingIndicator(state, customText = null) {
             const indicator = document.getElementById('typingIndicator');
             const textSpan = indicator.querySelector('span');
-            
+
             const stateMessages = {
                 [AgentState.ANALYZING]: '🔀 Analyzing your question',
                 [AgentState.SEARCHING_WEB]: '🌐 Searching the web',
@@ -584,7 +582,7 @@
 
             const content = document.createElement('div');
             content.className = 'message-content';
-            
+
             if (sender === 'assistant') {
                 content.textContent = text; // Start with plain text for streaming
             } else {
@@ -598,7 +596,7 @@
 
             // Scroll to bottom
             chatDisplay.scrollTop = chatDisplay.scrollHeight;
-            
+
             return messageDiv;
         }
 
@@ -618,7 +616,7 @@
 
             isProcessing = true;
             sendButton.disabled = true;
-            
+
             // Add user message
             addMessage(text, 'user');
             chatInput.value = '';
@@ -648,19 +646,23 @@
                 // Read SSE stream
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
+                let buffer = '';
 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
 
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n');
+                    const chunk = decoder.decode(value, { stream: true });
+                    buffer += chunk;
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep the last incomplete line in buffer
 
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             try {
                                 const data = JSON.parse(line.slice(6));
-                                
+
                                 // Handle different event types
                                 if (data.type === 'status') {
                                     if (data.stage === 'citations') {
@@ -679,7 +681,7 @@
                                         hideTypingIndicator();
                                         currentMessageDiv = addMessage('', 'assistant');
                                     }
-                                    
+
                                     // Accumulate and display token
                                     accumulatedResponse += data.token;
                                     updateMessageContent(currentMessageDiv, accumulatedResponse, false);
@@ -725,17 +727,17 @@
 
         function createPill(sources) {
             const container = currentMessageDiv.querySelector('div:last-child');
-            
+
             // Remove existing pill if it exists (defensive)
             const oldPill = container.querySelector('.sources-pill');
             if (oldPill) oldPill.remove();
 
             const pill = document.createElement('div');
             pill.className = 'sources-pill';
-            
+
             const iconContainer = document.createElement('div');
             iconContainer.className = 'sources-pill-icons';
-            
+
             // Add up to 3 icons
             sources.slice(0, 3).forEach(s => {
                 const icon = document.createElement('div');
@@ -743,49 +745,49 @@
                 icon.textContent = s.source === 'PubMed' ? '📄' : '🌐';
                 iconContainer.appendChild(icon);
             });
-            
+
             pill.appendChild(iconContainer);
             const countText = document.createElement('span');
             countText.textContent = `${sources.length} sources`;
             pill.appendChild(countText);
-            
+
             pill.addEventListener('click', () => openSidebar(sources));
-            
+
             // Insert pill before the message content for better visual flow
             const content = container.querySelector('.message-content');
             container.insertBefore(pill, content);
-            
+
             chatDisplay.scrollTop = chatDisplay.scrollHeight;
         }
 
         function openSidebar(sources) {
             sidebarContent.innerHTML = '';
-            
+
             sources.forEach(source => {
                 const item = document.createElement('a');
                 item.href = source.url;
                 item.className = 'sidebar-citation-item';
                 item.target = '_blank';
                 item.rel = 'noopener noreferrer';
-                
+
                 const sourceType = document.createElement('div');
                 sourceType.className = 'sidebar-citation-source';
                 sourceType.innerHTML = `${source.source === 'PubMed' ? '📄 PubMed' : '🌐 Web Search'}`;
-                
+
                 const title = document.createElement('div');
                 title.className = 'sidebar-citation-title';
                 title.textContent = source.title;
-                
+
                 const url = document.createElement('div');
                 url.className = 'sidebar-citation-url';
                 url.textContent = source.url;
-                
+
                 item.appendChild(sourceType);
                 item.appendChild(title);
                 item.appendChild(url);
                 sidebarContent.appendChild(item);
             });
-            
+
             sourcesSidebar.classList.add('visible');
             sidebarOverlay.classList.add('visible');
         }

@@ -99,6 +99,7 @@ class BiomarkerPlausibilityValidator:
             "systolic_bp": {"hard": (50.0, 260.0), "physiological": (90.0, 180.0)},
             "diastolic_bp": {"hard": (20.0, 200.0), "physiological": (40.0, 130.0)},
             "chest_micro_motion": {"hard": (0.0, 1.0), "physiological": (0.0001, 0.1)},
+
             
             # Radar (Seeed MR60BHA2)
             "radar_heart_rate": {"hard": (30.0, 220.0), "physiological": (40.0, 200.0)},
@@ -120,12 +121,7 @@ class BiomarkerPlausibilityValidator:
             "forehead_temperature": {"hard": (28.0, 42.0), "physiological": (33.0, 37.5)},
             "thermal_stability": {"hard": (0.0, 10.0), "physiological": (0.0, 1.5)},
             
-            # Renal
-            "fluid_asymmetry_index": {"hard": (0.0, 1.0), "physiological": (0.0, 0.5)},
-            "total_body_water_proxy": {"hard": (0.0, 5.0), "physiological": (0.3, 2.0)},
-            "extracellular_fluid_ratio": {"hard": (0.0, 1.0), "physiological": (0.2, 0.6)},
-            "fluid_overload_index": {"hard": (-2.0, 2.0), "physiological": (-0.5, 0.5)},
-            
+
             # GI
             "abdominal_rhythm_score": {"hard": (0.0, 1.0), "physiological": (0.1, 1.0)},
             "visceral_motion_variance": {"hard": (0.0, 10000.0), "physiological": (1.0, 500.0)},
@@ -137,12 +133,12 @@ class BiomarkerPlausibilityValidator:
             "stance_stability_score": {"hard": (0.0, 100.0), "physiological": (30.0, 100.0)},
             "sway_velocity": {"hard": (0.0, 1.0), "physiological": (0.0, 0.1)},
             "average_joint_rom": {"hard": (0.0, 3.14), "physiological": (0.1, 2.5)},
-            
-            # Skin
-            "texture_roughness": {"hard": (0.0, 1000.0), "physiological": (1.0, 100.0)},
-            "skin_redness": {"hard": (0.0, 1.0), "physiological": (0.05, 0.95)},
-            "skin_yellowness": {"hard": (0.0, 1.0), "physiological": (0.05, 0.8)},
-            "color_uniformity": {"hard": (0.0, 1.0), "physiological": (0.15, 1.0)},
+
+            # Skin - values are normalized 0-1 (normalized_score unit)
+            "texture_roughness": {"hard": (0.0, 1000.0), "physiological": (0.0, 50.0)},
+            "skin_redness": {"hard": (0.0, 1.0), "physiological": (0.0, 0.7)},
+            "skin_yellowness": {"hard": (0.0, 1.0), "physiological": (0.0, 0.7)},
+            "color_uniformity": {"hard": (0.0, 1.0), "physiological": (0.1, 1.0)},
             "lesion_count": {"hard": (0.0, 1000.0), "physiological": (0.0, 50.0)},
             
             # Eyes
@@ -171,7 +167,6 @@ class BiomarkerPlausibilityValidator:
         return {
             PhysiologicalSystem.CNS: ["gait_variability", "cns_stability_score"],
             PhysiologicalSystem.CARDIOVASCULAR: ["heart_rate"],
-            PhysiologicalSystem.RENAL: ["fluid_asymmetry_index"],
             PhysiologicalSystem.GASTROINTESTINAL: ["abdominal_rhythm_score"],
             PhysiologicalSystem.SKELETAL: ["gait_symmetry_ratio"],
             PhysiologicalSystem.SKIN: ["color_uniformity"],
