@@ -5,7 +5,7 @@ Extracts GI health indicators:
 - Abdominal motion rhythm
 - Visceral motion patterns
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import numpy as np
 from scipy.fft import fft, fftfreq
 
@@ -83,18 +83,20 @@ class GastrointestinalExtractor(BaseExtractor):
         # Analyze rhythmic patterns (GI motility ~0.05 Hz = 3 cycles/min)
         if len(abdominal_mean) > 100:
             rhythm_score = self._analyze_gi_rhythm(abdominal_mean)
+            self._add_biomarker(
+                biomarker_set,
+                name="abdominal_rhythm_score",
+                value=float(rhythm_score),
+                unit="score_0_1",
+                confidence=0.60,
+                normal_range=(0.4, 0.9),
+                description="Regularity of abdominal rhythmic patterns"
+            )
         else:
-            rhythm_score = np.random.uniform(0.5, 0.8)
-        
-        self._add_biomarker(
-            biomarker_set,
-            name="abdominal_rhythm_score",
-            value=float(rhythm_score),
-            unit="score_0_1",
-            confidence=0.60,
-            normal_range=(0.4, 0.9),
-            description="Regularity of abdominal rhythmic patterns"
-        )
+            logger.warning(
+                f"GI: RIS signal too short ({len(abdominal_mean)} samples) for rhythm analysis "
+                f"(minimum 100 required). Skipping abdominal_rhythm_score."
+            )
         
         # Visceral motion variance
         visceral_variance = float(np.var(abdominal_mean))
@@ -132,18 +134,18 @@ class GastrointestinalExtractor(BaseExtractor):
         # Respiratory rate from motion
         if len(vertical) > 30:
             resp_rate = self._estimate_respiratory_rate(vertical)
+            if resp_rate is not None:
+                self._add_biomarker(
+                    biomarker_set,
+                    name="abdominal_respiratory_rate",
+                    value=resp_rate,
+                    unit="breaths_per_min",
+                    confidence=0.65,
+                    normal_range=(12, 20),
+                    description="Respiratory rate from abdominal motion"
+                )
         else:
-            resp_rate = 15
-        
-        self._add_biomarker(
-            biomarker_set,
-            name="abdominal_respiratory_rate",
-            value=resp_rate,
-            unit="breaths_per_min",
-            confidence=0.65,
-            normal_range=(12, 20),
-            description="Respiratory rate from abdominal motion"
-        )
+            logger.warning("GI: Pose sequence too short for respiratory rate estimation; skipping")
     
     def _analyze_gi_rhythm(self, signal: np.ndarray, sample_rate: float = 1000) -> float:
         """
@@ -169,9 +171,8 @@ class GastrointestinalExtractor(BaseExtractor):
         
         return float(np.clip(rhythm_score, 0, 1))
     
-    def _estimate_respiratory_rate(self, motion: np.ndarray, fps: float = 30) -> float:
-        """Estimate respiratory rate from vertical motion."""
-        # Count peaks
+    def _estimate_respiratory_rate(self, motion: np.ndarray, fps: float = 30) -> Optional[float]:
+        """Estimate respiratory rate from vertical motion. Returns None if estimation fails."""
         from scipy.signal import find_peaks
         
         # Smooth the signal
@@ -183,9 +184,9 @@ class GastrointestinalExtractor(BaseExtractor):
         peaks, _ = find_peaks(smoothed, distance=fps//2)  # Min 0.5 sec between breaths
         
         duration_min = len(motion) / fps / 60
-        if duration_min > 0:
+        if duration_min > 0 and len(peaks) > 0:
             resp_rate = len(peaks) / duration_min
+            return float(np.clip(resp_rate, 8, 30))
         else:
-            resp_rate = 15
-        
-        return float(np.clip(resp_rate, 8, 30))
+            logger.warning("GI: No respiratory peaks detected in motion signal; skipping")
+            return None

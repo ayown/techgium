@@ -20,7 +20,8 @@ from .base import BaseExtractor, BiomarkerSet, PhysiologicalSystem
 
 logger = get_logger(__name__)
 
-# Physiological fallback values for sensor failures
+# Reference physiological values — for documentation only.
+# These are NOT used as substitutes for real measurements.
 FALLBACK_VALUES = {
     "skin_temperature": 36.5,
     "skin_temperature_max": 37.0,
@@ -86,9 +87,9 @@ class SkinExtractor(BaseExtractor):
             pass
         return None
     
-    def _get_fallback_value(self, name: str) -> float:
-        """Get physiologically reasonable fallback value for a biomarker."""
-        return FALLBACK_VALUES.get(name, 0.0)
+    def _get_fallback_value(self, name: str) -> None:
+        """Fallback values are no longer used as substitutes for real measurements."""
+        return None
     
     def extract(self, data: Dict[str, Any]) -> BiomarkerSet:
         """
@@ -191,48 +192,54 @@ class SkinExtractor(BaseExtractor):
 
         # 2. Texture Analysis (GLCM on Green Channel of ROI)
         texture_roughness = self._analyze_texture_glcm(face_roi_crop, face_mask)
-        self._add_biomarker(
-            biomarker_set,
-            name="texture_roughness",
-            value=texture_roughness,
-            unit="glcm_contrast",
-            confidence=0.75,
-            normal_range=(0.0, 5.0),  # Calibrated for webcam GLCM (32 levels, bilateral filtered)
-            description="Skin surface texture (GLCM Contrast, multi-angle)"
-        )
+        if texture_roughness is not None:
+            self._add_biomarker(
+                biomarker_set,
+                name="texture_roughness",
+                value=texture_roughness,
+                unit="glcm_contrast",
+                confidence=0.75,
+                normal_range=(0.0, 5.0),  # Calibrated for webcam GLCM (32 levels, bilateral filtered)
+                description="Skin surface texture (GLCM Contrast, multi-angle)"
+            )
+        else:
+            logger.warning("Skin: Texture analysis skipped (empty crop)")
         
         # 3. Color Analysis (CIELab on Masked Face)
         color_metrics = self._analyze_skin_color_lab(frame, face_mask, session_baseline)
-        
-        self._add_biomarker(
-            biomarker_set,
-            name="skin_redness",
-            value=color_metrics["redness"],
-            unit="normalized_score",
-            confidence=0.85,
-            normal_range=(0.0, 0.5),
-            description="Skin redness (normalized 0-1, higher = more red)"
-        )
-        
-        self._add_biomarker(
-            biomarker_set,
-            name="skin_yellowness",
-            value=color_metrics["yellowness"],
-            unit="normalized_score",
-            confidence=0.80,
-            normal_range=(0.0, 0.5),
-            description="Skin yellowness (normalized 0-1, higher = more yellow)"
-        )
-        
-        self._add_biomarker(
-            biomarker_set,
-            name="color_uniformity",
-            value=color_metrics["uniformity"],
-            unit="entropy_inv",
-            confidence=0.70,
-            normal_range=(0.25, 1.0),  # Calibrated: Real skin has natural variation (0.25-0.7 typical)
-            description="Skin tone uniformity (Inverse Entropy)"
-        )
+
+        if color_metrics is not None:
+            self._add_biomarker(
+                biomarker_set,
+                name="skin_redness",
+                value=color_metrics["redness"],
+                unit="normalized_score",
+                confidence=0.85,
+                normal_range=(0.0, 0.5),
+                description="Skin redness (normalized 0-1, higher = more red)"
+            )
+
+            self._add_biomarker(
+                biomarker_set,
+                name="skin_yellowness",
+                value=color_metrics["yellowness"],
+                unit="normalized_score",
+                confidence=0.80,
+                normal_range=(0.0, 0.5),
+                description="Skin yellowness (normalized 0-1, higher = more yellow)"
+            )
+
+            self._add_biomarker(
+                biomarker_set,
+                name="color_uniformity",
+                value=color_metrics["uniformity"],
+                unit="entropy_inv",
+                confidence=0.70,
+                normal_range=(0.25, 1.0),  # Calibrated: Real skin has natural variation (0.25-0.7 typical)
+                description="Skin tone uniformity (Inverse Entropy)"
+            )
+        else:
+            logger.warning("Skin: Color analysis skipped (empty frame or no skin pixels)")
         
         # 4. Lesion Detection (Placeholder for Future ML Model)
         self._add_biomarker(
@@ -347,7 +354,8 @@ class SkinExtractor(BaseExtractor):
         Metric: Mean Contrast across all distance/angle combinations.
         """
         if face_crop.size == 0:
-            return self._get_fallback_value("texture_roughness")
+            logger.warning("Skin: _analyze_texture_glcm received empty crop; skipping texture analysis")
+            return None
         
         # Apply bilateral filter to reduce noise while preserving edges
         denoised = cv2.bilateralFilter(face_crop, 9, 75, 75)
@@ -431,11 +439,8 @@ class SkinExtractor(BaseExtractor):
         Otherwise, they are deviations from neutral gray (128).
         """
         if frame.size == 0:
-            return {
-                "redness": self._get_fallback_value("skin_redness"),
-                "yellowness": self._get_fallback_value("skin_yellowness"),
-                "uniformity": self._get_fallback_value("color_uniformity")
-            }
+            logger.warning("Skin: _analyze_skin_color_lab received empty frame; skipping color analysis")
+            return None
             
         # Convert to Lab
         lab_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2Lab)
@@ -460,11 +465,8 @@ class SkinExtractor(BaseExtractor):
         skin_pixels_b = b_channel[mask == 255]
         
         if len(skin_pixels_a) == 0:
-             return {
-                "redness": self._get_fallback_value("skin_redness"),
-                "yellowness": self._get_fallback_value("skin_yellowness"),
-                "uniformity": self._get_fallback_value("color_uniformity")
-            }
+            logger.warning("Skin: No skin pixels found in mask; skipping color analysis")
+            return None
 
         # Calculate raw means
         raw_a_mean = np.mean(skin_pixels_a)
@@ -844,17 +846,14 @@ class SkinExtractor(BaseExtractor):
         normal_range: Optional[tuple] = None,
         description: str = ""
     ) -> None:
-        """Safe biomarker addition with fallback for invalid values."""
+        """Safe biomarker addition. Drops the biomarker if the value is invalid (NaN/Inf)."""
         try:
-            # Handle NaN/Inf with physiological fallback instead of silent drop
             if np.isnan(value) or np.isinf(value):
-                fallback = self._get_fallback_value(name)
                 logger.warning(
-                    f"Skin: Invalid {name} value: {value}. "
-                    f"Using fallback: {fallback} (confidence reduced by 50%)"
+                    f"Skin: Invalid {name} value ({value}) — dropping biomarker. "
+                    f"A fake fallback value would misrepresent the measurement."
                 )
-                value = fallback
-                confidence *= 0.5  # Reduce confidence for fallback data
+                return  # Do NOT substitute a hardcoded value
 
             self._add_biomarker(
                 biomarker_set, name, float(value), unit,
@@ -862,14 +861,6 @@ class SkinExtractor(BaseExtractor):
                 description=description
             )
         except Exception as e:
-            logger.error(f"Skin: Failed to add biomarker {name}: {e}")
-            # Last resort: try fallback value
-            try:
-                self._add_biomarker(
-                    biomarker_set, name, self._get_fallback_value(name), unit,
-                    confidence=0.1, normal_range=normal_range,
-                    description=f"{description} (fallback due to error)"
-                )
-            except:
-                pass  # Give up gracefully
+            logger.error(f"Skin: Failed to add biomarker {name}: {e} — skipping")
+            # Do NOT inject a fallback value; a fake number is worse than no number.
             

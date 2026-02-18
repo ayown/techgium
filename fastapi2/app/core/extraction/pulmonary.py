@@ -154,39 +154,39 @@ class PulmonaryExtractor(BaseExtractor):
 
     def _extract_from_thermal_fallback(self, thermal_data: Dict[str, Any], biomarker_set: BiomarkerSet) -> None:
         """
-        Fallback: derive a respiration rate proxy from thermal stability.
-        
-        When radar is unavailable, thermal stability (canthus_range) correlates
-        with breathing regularity. We use a physiological default with low confidence
-        to ensure the pulmonary system always appears in the report.
+        Fallback: report thermal stability as a breathing-regularity proxy.
+
+        Thermal stability (canthus temperature range) is a real sensor measurement
+        that correlates loosely with breathing regularity. We report it as-is.
+
+        We do NOT fabricate a respiration_rate value here — there is no validated
+        formula to convert thermal stability into breaths/min, and outputting a
+        hardcoded guess (e.g. 16.0) would misrepresent it as a measurement.
+        The radar sensor is required for a quantitative RR reading.
         """
-        # Use thermal stability as a breathing regularity proxy
         thermal_stability = thermal_data.get("thermal_stability")
-        
-        # Derive a respiration rate estimate: normal adult is 12-20 bpm
-        # We use 16.0 as the physiological default with low confidence
-        # This is a placeholder — the radar should provide the real value
-        rr_estimate = 16.0
-        confidence = 0.30  # Low confidence: thermal is not a direct RR measurement
-        
+
         if thermal_stability is not None:
-            # Higher thermal stability → more regular breathing → closer to normal RR
-            # This is a very rough proxy
-            if thermal_stability < 0.5:
-                rr_estimate = 15.0  # Very stable → relaxed breathing
-            elif thermal_stability > 1.5:
-                rr_estimate = 18.0  # Less stable → slightly elevated
-        
-        self._add_biomarker_safe(
-            biomarker_set,
-            name="respiration_rate",
-            value=rr_estimate,
-            unit="breaths/min",
-            confidence=confidence,
-            normal_range=(10, 20),
-            description="Respiration rate (thermal proxy — radar not available)"
-        )
-        logger.info(f"Pulmonary: Using thermal fallback RR={rr_estimate} bpm (confidence={confidence})")
+            # Report the raw thermal stability value — this IS a real sensor reading.
+            # Lower values indicate more stable (regular) breathing patterns.
+            self._add_biomarker_safe(
+                biomarker_set,
+                name="thermal_breathing_regularity",
+                value=float(thermal_stability),
+                unit="delta_celsius",
+                confidence=0.55,
+                normal_range=(0.0, 1.0),
+                description="Facial thermal stability proxy for breathing regularity (radar unavailable)"
+            )
+            logger.info(
+                f"Pulmonary: Thermal fallback — thermal_stability={thermal_stability:.3f} °C "
+                f"(no quantitative RR available without radar)"
+            )
+        else:
+            logger.warning(
+                "Pulmonary: Thermal fallback attempted but thermal_stability is absent. "
+                "No pulmonary biomarkers could be extracted."
+            )
 
     def _add_biomarker_safe(
         self,

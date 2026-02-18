@@ -93,10 +93,10 @@ class BiomarkerPlausibilityValidator:
             "tremor_postural": {"hard": (0.0, 100.0), "physiological": (0.0, 10.0)},
             "cns_stability_score": {"hard": (0.0, 100.0), "physiological": (20.0, 100.0)},
             
-            # Cardiovascular
-            "heart_rate": {"hard": (25.0, 250.0), "physiological": (50.0, 180.0)},
+            # Cardiovascular (widened for athletes/anxiety)
+            "heart_rate": {"hard": (25.0, 250.0), "physiological": (45.0, 200.0)},
             "hrv_rmssd": {"hard": (0.0, 500.0), "physiological": (5.0, 200.0)},
-            "systolic_bp": {"hard": (50.0, 260.0), "physiological": (90.0, 180.0)},
+            "systolic_bp": {"hard": (50.0, 260.0), "physiological": (85.0, 200.0)},
             "diastolic_bp": {"hard": (20.0, 200.0), "physiological": (40.0, 130.0)},
             "chest_micro_motion": {"hard": (0.0, 1.0), "physiological": (0.0001, 0.1)},
 
@@ -111,12 +111,12 @@ class BiomarkerPlausibilityValidator:
             "thermal_asymmetry": {"hard": (0.0, 10.0), "physiological": (0.0, 3.5)},
             
             # Thermal biomarkers (ESP32 thermal bridge v2)
-            "skin_temperature": {"hard": (30.0, 45.0), "physiological": (33.0, 39.0)},
-            "skin_temperature_max": {"hard": (32.0, 50.0), "physiological": (36.0, 42.0)},
+            "skin_temperature": {"hard": (20.0, 45.0), "physiological": (28.0, 39.0)},  # 28C for cold hands/feet
+            "skin_temperature_max": {"hard": (32.0, 50.0), "physiological": (34.0, 42.0)},
             "inflammation_index": {"hard": (0.0, 100.0), "physiological": (0.0, 20.0)},
-            "face_mean_temperature": {"hard": (28.0, 42.0), "physiological": (33.0, 37.0)},
-            "facial_perfusion_temp": {"hard": (28.0, 42.0), "physiological": (32.0, 37.0)},
-            "microcirculation_temp": {"hard": (30.0, 42.0), "physiological": (34.0, 38.0)},
+            "face_mean_temperature": {"hard": (28.0, 42.0), "physiological": (30.0, 38.0)},
+            "facial_perfusion_temp": {"hard": (28.0, 42.0), "physiological": (30.0, 38.0)},
+            "microcirculation_temp": {"hard": (30.0, 42.0), "physiological": (30.0, 39.0)},
             "thermal_stress_gradient": {"hard": (-5.0, 10.0), "physiological": (0.0, 3.0)},
             "forehead_temperature": {"hard": (28.0, 42.0), "physiological": (33.0, 37.5)},
             "thermal_stability": {"hard": (0.0, 10.0), "physiological": (0.0, 1.5)},
@@ -142,7 +142,7 @@ class BiomarkerPlausibilityValidator:
             "lesion_count": {"hard": (0.0, 1000.0), "physiological": (0.0, 50.0)},
             
             # Eyes
-            "blink_rate": {"hard": (0.0, 100.0), "physiological": (0.0, 50.0)},
+            "blink_rate": {"hard": (0.0, 100.0), "physiological": (2.0, 50.0)},  # <2.0 implies staring/frozen video
             "blink_count": {"hard": (0.0, 1000.0), "physiological": (0.0, 100.0)},
             "gaze_stability_score": {"hard": (0.0, 100.0), "physiological": (30.0, 100.0)},
             "fixation_duration": {"hard": (10.0, 10000.0), "physiological": (50.0, 2000.0)},
@@ -151,7 +151,7 @@ class BiomarkerPlausibilityValidator:
             
             # Nasal/Respiratory
             "breathing_regularity": {"hard": (0.0, 1.0), "physiological": (0.2, 1.0)},
-            "respiratory_rate": {"hard": (3.0, 70.0), "physiological": (12.0, 25.0)},
+            "respiratory_rate": {"hard": (3.0, 70.0), "physiological": (8.0, 35.0)},  # 8 for athletes, 35 for stress
             "breath_depth_index": {"hard": (0.0, 10.0), "physiological": (0.1, 3.0)},
             "airflow_turbulence": {"hard": (0.0, 10.0), "physiological": (0.0, 1.0)},
             
@@ -324,10 +324,10 @@ class BiomarkerPlausibilityValidator:
         
         # Maximum allowed change per second for various biomarkers
         max_rates = {
-            "heart_rate": 30.0,        # 30 bpm/s is extreme
-            "respiratory_rate": 10.0,   # 10 breaths/min/s
-            "systolic_bp": 20.0,        # 20 mmHg/s
-            "diastolic_bp": 15.0,
+            "heart_rate": 10.0,        # 10 bpm/s is extreme but possible in startle
+            "respiratory_rate": 5.0,   # 5 breaths/min/s
+            "systolic_bp": 10.0,       # 10 mmHg/s
+            "diastolic_bp": 8.0,
             "gait_symmetry_ratio": 0.1,
             "blink_rate": 5.0,
         }

@@ -326,8 +326,8 @@ class CardiovascularExtractor(BaseExtractor):
                 hr = float(abs(peak_freq) * 60)
                 hr = np.clip(hr, 45, 180)
             else:
-                hr = 72.0
-                base_confidence *= 0.5
+                logger.warning("rPPG: No cardiac frequency peak found; skipping heart_rate biomarker")
+                return
             
             self._add_biomarker(
                 biomarker_set,
@@ -512,21 +512,24 @@ class CardiovascularExtractor(BaseExtractor):
     ) -> None:
         """Extract from direct vital sign measurements."""
         
-        # Heart rate
-        hr = vitals.get("heart_rate", vitals.get("heart_rate_bpm", 72))
-        self._add_biomarker(
-            biomarker_set,
-            name="heart_rate",
-            value=float(hr),
-            unit="bpm",
-            confidence=0.95,
-            normal_range=(60, 100),
-            description="Resting heart rate"
-        )
+        # Heart rate — only add if the key is actually present in vitals
+        hr = vitals.get("heart_rate", vitals.get("heart_rate_bpm"))
+        if hr is None:
+            logger.warning("_extract_from_vitals: no heart_rate key found in vitals; skipping HR biomarker")
+        else:
+            self._add_biomarker(
+                biomarker_set,
+                name="heart_rate",
+                value=float(hr),
+                unit="bpm",
+                confidence=0.95,
+                normal_range=(60, 100),
+                description="Resting heart rate"
+            )
         
         # HRV if available
         if "hrv" in vitals or "rmssd" in vitals:
-            hrv = vitals.get("hrv", vitals.get("rmssd", 50))
+            hrv = vitals.get("hrv", vitals.get("rmssd"))
             self._add_biomarker(
                 biomarker_set,
                 name="hrv_rmssd",
@@ -536,18 +539,21 @@ class CardiovascularExtractor(BaseExtractor):
                 normal_range=(20, 80),
                 description="Heart rate variability (RMSSD)"
             )
-        else:
-            # Estimate HRV from HR
-            estimated_hrv = self._estimate_hrv_from_hr(hr)
+        elif hr is not None:
+            # Only estimate HRV from HR if we actually have a real HR value.
+            # This is a rough population-level estimate — confidence is low.
+            estimated_hrv = self._estimate_hrv_from_hr(float(hr))
             self._add_biomarker(
                 biomarker_set,
                 name="hrv_rmssd",
                 value=estimated_hrv,
                 unit="ms",
-                confidence=0.60,
+                confidence=0.35,
                 normal_range=(20, 80),
-                description="Estimated HRV from heart rate"
+                description="HRV estimated from HR (population model, low confidence — no measured HRV available)"
             )
+        else:
+            logger.warning("_extract_from_vitals: no HR or HRV data available; skipping HRV biomarker")
         
         # Blood pressure if available
         if "systolic_bp" in vitals:
@@ -601,8 +607,8 @@ class CardiovascularExtractor(BaseExtractor):
             quality = self.compute_signal_quality(processed, self.sample_rate)
             base_confidence = 0.75 * quality * confidence_factor
         else:
-            hr, hrv = 72, 45
-            base_confidence = 0.5
+            logger.warning("_extract_from_ris: RIS signal too short for cardiac analysis; skipping biomarkers")
+            return
         
         self._add_biomarker(
             biomarker_set,
@@ -674,17 +680,20 @@ class CardiovascularExtractor(BaseExtractor):
             description="Chest wall micro-motion amplitude (cardiac proxy)"
         )
         
-        # Estimate HR from motion frequency
+        # Estimate HR from motion frequency — only add if extraction succeeded
         hr = self._estimate_hr_from_motion(vertical_motion)
-        self._add_biomarker(
-            biomarker_set,
-            name="heart_rate",
-            value=hr,
-            unit="bpm",
-            confidence=0.50,
-            normal_range=(60, 100),
-            description="Heart rate estimated from chest motion"
-        )
+        if hr is not None:
+            self._add_biomarker(
+                biomarker_set,
+                name="heart_rate",
+                value=hr,
+                unit="bpm",
+                confidence=0.50,
+                normal_range=(60, 100),
+                description="Heart rate estimated from chest motion"
+            )
+        else:
+            logger.warning("_extract_from_motion: could not estimate HR from motion signal; skipping biomarker")
     
     def _analyze_cardiac_signal(self, signal_data: np.ndarray) -> tuple:
         """
@@ -730,54 +739,65 @@ class CardiovascularExtractor(BaseExtractor):
         
         return hr, hrv
     
-    def _estimate_hr_from_motion(self, motion_signal: np.ndarray, fps: float = 30.0) -> float:
+    def _estimate_hr_from_motion(self, motion_signal: np.ndarray, fps: float = 30.0) -> Optional[float]:
         """
         Estimate heart rate from motion signal using FFT peak detection.
-        
+
         Args:
             motion_signal: Chest motion signal
             fps: Video frame rate (default 30)
-            
+
         Returns:
-            Estimated heart rate in bpm
+            Estimated heart rate in bpm, or None if extraction fails.
         """
         if len(motion_signal) < fps * 5:  # Need at least 5 seconds
-            return 72.0
-        
+            logger.warning("_estimate_hr_from_motion: motion signal too short; cannot estimate HR")
+            return None
+
         try:
             # Preprocess the signal with bandpass filter
             processed = self.preprocess_signal(motion_signal, fps, lowcut=0.8, highcut=3.0)
-            
+
             # FFT for frequency analysis
             n = len(processed)
             freqs = np.fft.fftfreq(n, d=1/fps)
             fft_vals = np.abs(np.fft.fft(processed))
-            
+
             # Find peak in cardiac range (0.8-3 Hz = 48-180 bpm)
             cardiac_mask = (freqs > 0.8) & (freqs < 3.0)
-            
+
             if not np.any(cardiac_mask):
-                return 72.0
-            
+                logger.warning("_estimate_hr_from_motion: no cardiac frequency peak found")
+                return None
+
             cardiac_freqs = freqs[cardiac_mask]
             cardiac_power = fft_vals[cardiac_mask]
-            
+
             # Get dominant frequency
             peak_idx = np.argmax(cardiac_power)
             peak_freq = cardiac_freqs[peak_idx]
             hr = float(abs(peak_freq) * 60)
-            
+
             return float(np.clip(hr, 50, 120))
-            
-        except Exception:
-            return 72.0
+
+        except Exception as e:
+            logger.warning(f"_estimate_hr_from_motion: FFT failed: {e}")
+            return None
     
     def _estimate_hrv_from_hr(self, hr: float) -> float:
-        """Estimate HRV from heart rate using population statistics."""
-        # HRV tends to be inversely related to HR
-        # Using rough empirical relationship
-        base_hrv = 60 - 0.5 * (hr - 60)
-        noise = np.random.normal(0, 5)
-        return float(np.clip(base_hrv + noise, 15, 90))
+        """
+        Estimate HRV from heart rate using a deterministic population-level model.
+
+        WARNING: This is a rough empirical approximation only. It must NOT be used
+        as a substitute for measured HRV. Confidence must be kept low (≤0.35).
+        Random noise has been intentionally removed — adding noise would hallucinate
+        precision that does not exist.
+
+        The inverse HR-HRV relationship is well-documented in literature
+        (e.g., Bigger et al. 1992), but individual variation is very high.
+        """
+        # Deterministic inverse relationship: higher HR → lower HRV
+        base_hrv = 60.0 - 0.5 * (hr - 60.0)
+        return float(np.clip(base_hrv, 15.0, 90.0))
                            
                            

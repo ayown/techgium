@@ -650,11 +650,19 @@ class CompositeRiskCalculator:
             elif result.overall_risk.level == RiskLevel.HIGH and max_level != RiskLevel.ACTION_REQUIRED:
                 max_level = RiskLevel.HIGH
         
-        # Apply critical override boost (escalate composite to match worst non-experimental system)
+        # Soft override: nudge composite toward the worst non-experimental system's threshold,
+        # rather than hard-snapping to it. Non-contact sensors have higher measurement variance
+        # than clinical-grade equipment, so a single elevated reading should not dominate the
+        # composite score — it should only pull it upward proportionally.
+        #
+        # Blend factor: 0.3 means the composite moves 30% of the way toward the threshold.
+        # This prevents a single noisy sensor from triggering a system-wide alarm while still
+        # ensuring genuinely elevated readings raise the overall score.
+        BLEND_FACTOR = 0.3
         if max_level == RiskLevel.ACTION_REQUIRED and composite_score < 75:
-            composite_score = 75.0  # Boost to ACTION_REQUIRED threshold
+            composite_score = composite_score + BLEND_FACTOR * (75.0 - composite_score)
         elif max_level == RiskLevel.HIGH and composite_score < 50:
-            composite_score = 50.0  # Boost to HIGH threshold when any system is HIGH
+            composite_score = composite_score + BLEND_FACTOR * (50.0 - composite_score)
         
         # Generate explanation
         level = RiskLevel.from_score(composite_score)

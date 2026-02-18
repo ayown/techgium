@@ -243,11 +243,14 @@ class EyeExtractor(BaseExtractor):
         
         # Fallback to basic pose-based extraction (lower confidence)
         blink_rate = self._estimate_blink_rate(pose_array, fps)
-        self._add_biomarker_safe(
-            biomarker_set, "blink_rate", blink_rate, "blinks_per_min",
-            confidence=0.65, normal_range=(12, 35),
-            description="Pose-based blink estimation (screen-calibrated)"
-        )
+        if blink_rate is not None:
+            self._add_biomarker_safe(
+                biomarker_set, "blink_rate", blink_rate, "blinks_per_min",
+                confidence=0.65, normal_range=(12, 35),
+                description="Pose-based blink estimation (screen-calibrated)"
+            )
+        else:
+            logger.warning("Eye: Skipping blink_rate — no visibility channel in pose data")
         
         gaze_stability = self._calculate_gaze_stability(left_eye, right_eye)
         self._add_biomarker_safe(
@@ -638,12 +641,14 @@ class EyeExtractor(BaseExtractor):
         normal_range: Optional[tuple] = None,
         description: str = ""
     ) -> None:
-        """Safe biomarker addition with NaN/Inf protection and logging."""
+        """Safe biomarker addition. Drops the biomarker if value is None, NaN, or Inf."""
         try:
-            # Validate value
+            if value is None:
+                logger.warning(f"Eye: {name} value is None — dropping biomarker")
+                return
             if np.isnan(value) or np.isinf(value):
-                logger.warning(f"Invalid {name} value: {value}, using 0.0")
-                value = 0.0
+                logger.warning(f"Eye: Invalid {name} value ({value}) — dropping biomarker")
+                return  # Do NOT substitute a fake value
             
             # Cap confidence to valid range
             confidence = float(np.clip(confidence, 0.0, 1.0))
@@ -654,18 +659,19 @@ class EyeExtractor(BaseExtractor):
                 description=description
             )
         except Exception as e:
-            logger.error(f"Failed to add biomarker {name}: {e}")
+            logger.error(f"Eye: Failed to add biomarker {name}: {e} — skipping")
 
     # ============================================================
     # Legacy pose-based methods (lower accuracy fallback)
     # ============================================================
     
-    def _estimate_blink_rate(self, pose_array: np.ndarray, fps: float = 30) -> float:
+    def _estimate_blink_rate(self, pose_array: np.ndarray, fps: float = 30) -> Optional[float]:
         """Estimate blink rate from eye visibility changes (legacy)."""
         
         # Use eye visibility scores (column 3)
         if pose_array.shape[2] < 4:
-            return np.random.uniform(14, 18)
+            logger.warning("Eye: Pose landmarks have no visibility channel; cannot estimate blink rate")
+            return None  # Cannot estimate without visibility data — do NOT fabricate
         
         left_visibility = pose_array[:, 2, 3]
         right_visibility = pose_array[:, 5, 3]
