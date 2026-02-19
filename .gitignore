@@ -1,1 +1,12 @@
+# Virtual environments
 venv/
+venv2/
+fine_tune/venv2/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment files
+.env
