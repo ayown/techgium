@@ -31,3 +31,6 @@ interview_prep_health_screening.pdf
 Database_Architecture_Complete.pdf
 md_to_pdf.py
 convert_md.py
+convert_deployment_guide.py
+deployment_guide.pdf
+.venv_pdf/
